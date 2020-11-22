@@ -19,38 +19,29 @@
 #ifdef SERIAL_DEBUG
 # include <serial.h>
 # include <fprintf.h>
-extern tsFILE sDebugStream;
+PUBLIC tsFILE sDebugStream;
 #endif
+
+#include <fprintf.h>		// ********** for Debugging **********
+#include "utils.h"
+#include "Interactive.h"
+extern tsFILE sSerStream;
 
 /****************************************************************************/
 /***        Macro Definitions                                             ***/
 /****************************************************************************/
-#define SHTC3_ADDRESS	(0x70)
+#define TMP1075_ADDRESS     (0x48)
 
-#define LOWPOWER
-#ifndef LOWPOWER 
-	#define SHTC3_TRIG_H	(0x78)
-	#define SHTC3_TRIG_L	(0x66)
-#else
-	// Low Power Mode
-	#define SHTC3_TRIG_H	(0x60)
-	#define SHTC3_TRIG_L	(0x9C)
-#endif
+#define TMP1075_WRITE_REG   (0x01)
+#define TMP1075_READ_REG    (0x00)
 
-#define SHTC3_SLEEP_H	(0xB0)
-#define SHTC3_SLEEP_L	(0x98)
+#define TMP1075_STARTUP_H	(0x80)
+#define TMP1075_STARTUP_L	(0xFF)
 
-#define SHTC3_WAKEUP_H	(0x35)
-#define SHTC3_WAKEUP_L	(0x17)
+#define TMP1075_START_H		(0x80)
+#define TMP1075_START_L		(0xFF)
 
-#define SHTC3_SOFT_RST_H	(0x80)
-#define SHTC3_SOFT_RST_L	(0x5)
-
-#ifndef LOWPOWER 
-	#define SHTC3_CONVTIME		(15) // 15ms
-#else
-	#define SHTC3_CONVTIME		(2) // 2ms
-#endif
+#define TMP1075_CONVTIME	(26) // 26ms
 
 /****************************************************************************/
 /***        Type Definitions                                              ***/
@@ -60,7 +51,6 @@ extern tsFILE sDebugStream;
 /***        Local Function Prototypes                                     ***/
 /****************************************************************************/
 PRIVATE void vProcessSnsObj_SHTC3(void *pvObj, teEvent eEvent);
-PRIVATE uint8 u8CRC8( uint8* u8buf, uint8 u8len);
 
 /****************************************************************************/
 /***        Exported Variables                                            ***/
@@ -103,9 +93,9 @@ void vSHTC3_Final(tsObjData_SHTC3 *pData, tsSnsObj *pSnsObj) {
 PUBLIC bool_t bSHTC3reset()
 {
 	bool_t bOk = TRUE;
-	uint8 u8data = SHTC3_SOFT_RST_L;
+	uint8 u8reg[2] = {TMP1075_STARTUP_H, TMP1075_STARTUP_L};
 
-	bOk &= bSMBusWrite(SHTC3_ADDRESS, SHTC3_SOFT_RST_H, 1, &u8data );
+	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_WRITE_REG, 2, u8reg);
 	// then will need to wait at least 15ms
 
 	return bOk;
@@ -127,8 +117,10 @@ PUBLIC bool_t bSHTC3startRead()
 	bool_t bOk = TRUE;
 
 	// start conversion (will take some ms according to bits accuracy)
-	uint8 u8data = SHTC3_TRIG_L;
-	bOk &= bSMBusWrite(SHTC3_ADDRESS, SHTC3_TRIG_H, 1, &u8data );
+	uint8 u8reg[2] = {TMP1075_START_H, TMP1075_START_L};
+	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_WRITE_REG, 2, u8reg);
+
+//	vWait(TMP1075_CONVTIME);
 
 	return bOk;
 }
@@ -156,57 +148,33 @@ PUBLIC bool_t bSHTC3startRead()
 PUBLIC int16 i16SHTC3readResult(int16 *pi16Temp, int16 *pi16Humid)
 {
 	bool_t bOk = TRUE;
-    int32 i32result;
-    uint8 au8data[6];
+    uint8 au8data[2];
+	uint16 u16data;
+	int16 i16result;
+	double sign = 100.0;
+	uint8 u8reg;
 
-    bOk &= bSMBusSequentialRead(SHTC3_ADDRESS, 6, au8data);
+	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_READ_REG, 0, &u8reg);
+    bOk &= bSMBusSequentialRead(TMP1075_ADDRESS, 2, au8data);
     if(!bOk) return SHTC3_DATA_NOTYET; // error
-	bSHTC3sleep();
 
-	// CRC8 check
-	uint8 u8crc = u8CRC8(au8data, 2);
-	if (au8data[2] != u8crc) return SHTC3_DATA_ERROR;
-
-	u8crc = u8CRC8(au8data+3,2);
-	if (au8data[5] != u8crc) return SHTC3_DATA_ERROR;
-
- 	i32result = au8data[1] | (au8data[0] << 8);
-	if(pi16Temp) *pi16Temp = (int16)(-4500 + ((17500*i32result)>>16 ));
-	else return SHTC3_DATA_ERROR;
-
-	i32result = au8data[4] | (au8data[3] << 8);
-	if(pi16Humid) *pi16Humid = (int16)( (i32result*10000)>>16 );
-	else return SHTC3_DATA_ERROR;
-
-    return i32result;
-}
-
-uint8 u8CRC8( uint8* buf, uint8 u8len )
-{
-	uint8 u8crc = 0xFF;
-	uint8 u8GP = 0x31;	// X8+X5+X4+1
-	uint8 i = 0;
-	uint8 j = 0;
-
-	for( i=0; i<u8len; i++ ){
-		u8crc ^= buf[i];
-		for( j=0;j<8;j++ ){
-			if( u8crc&0x80 ){
-				u8crc <<= 1;
-				u8crc ^= u8GP;
-			}else{
-				u8crc <<= 1;
-			}
-		}
+ 	u16data = (au8data[0] << 8) | au8data[1];
+	if (u16data > 0x7fff) {
+		u16data ^= 0xffff;
+		u16data ++;
+		sign = -100.0;
 	}
-	return u8crc;
+	au8data[0] = u16data >> 8;
+	au8data[1] = u16data & 0xff;
+	i16result = (int16)(((double)au8data[0] + (double)au8data[1] / 256.0) * sign);
+    *pi16Temp = i16result; 
+    *pi16Humid = 0x8000; 
+    
+    return i16result;
 }
 
 PUBLIC bool_t bSHTC3sleep(){
 	bool_t bOk = TRUE;
-
-	uint8 u8data = SHTC3_SLEEP_L;
-	bOk &= bSMBusWrite(SHTC3_ADDRESS, SHTC3_SLEEP_H, 1, &u8data );
 
 	return bOk;
 }
@@ -214,8 +182,8 @@ PUBLIC bool_t bSHTC3sleep(){
 PUBLIC bool_t bSHTC3wakeup(){
 	bool_t bOk = TRUE;
 
-	uint8 u8data = SHTC3_WAKEUP_L;
-	bOk &= bSMBusWrite(SHTC3_ADDRESS, SHTC3_WAKEUP_H, 1, &u8data );
+	uint8 u8reg[2] = {TMP1075_STARTUP_H, TMP1075_STARTUP_L};
+	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_WRITE_REG, 2, u8reg);
 	
 	return bOk;
 }
@@ -226,11 +194,13 @@ PUBLIC bool_t bSHTC3wakeup(){
 void vProcessSnsObj_SHTC3(void *pvObj, teEvent eEvent) {
 	tsSnsObj *pSnsObj = (tsSnsObj *)pvObj;
 	tsObjData_SHTC3 *pObj = (tsObjData_SHTC3 *)pSnsObj->pvData;
+A_PRINTF(LB"!*** vProcessSnsObj_SHTC3 eEvent (%d) ***", eEvent);
 
 	// general process
 	switch (eEvent) {
 		case E_EVENT_TICK_TIMER:
 			if (pObj->u8TickCount < 100) {
+A_PRINTF(LB"!*** vProcessSnsObj_SHTC3 u8TickDelta (%d) ***", pSnsObj->u8TickDelta);
 				pObj->u8TickCount += pSnsObj->u8TickDelta;
 #ifdef SERIAL_DEBUG
 vfPrintf(&sDebugStream, "+");
@@ -278,7 +248,7 @@ vfPrintf(&sDebugStream, "\n\rSHTC3 WAKEUP");
 		case E_EVENT_NEW_STATE:
 			pObj->ai16Result[SHTC3_IDX_TEMP] = SENSOR_TAG_DATA_ERROR;
 			pObj->ai16Result[SHTC3_IDX_HUMID] = SENSOR_TAG_DATA_ERROR;
-			pObj->u8TickWait = SHTC3_CONVTIME;
+			pObj->u8TickWait = TMP1075_CONVTIME;
 
 			// kick I2C communication
 			if (!bSHTC3startRead()) {

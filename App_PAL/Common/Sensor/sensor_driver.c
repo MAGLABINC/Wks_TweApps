@@ -12,6 +12,11 @@
 #include "ToCoNet_event.h"
 #include "sensor_driver.h"
 
+#include <fprintf.h>		// ********** for Debugging **********
+#include "utils.h"
+#include "Interactive.h"
+extern tsFILE sSerStream;
+
 /** @ingroup SNSDRV
  * センサー状態マシンを初期化する
  *
@@ -33,14 +38,22 @@ void vSnsObj_Init(tsSnsObj *pObj) {
 void vSnsObj_Process(tsSnsObj *pObj, teEvent eEv) {
 	uint8 u8status_init;
 
+A_PRINTF(LB"!*** vSnsObj_Process in ***");
 	u8status_init = pObj->u8State;
+A_PRINTF(LB"!*** 1) status(%d) u8status_init(%d) ***", pObj->u8State, u8status_init);
+A_PRINTF(LB"!*** vProcessSnsObj_SHTC3 eEvent (%d) ***", eEv);
+A_PRINTF(LB"!*** vProcessSnsObj_SHTC3 u8TickDelta (%d) ***", pObj->u8TickDelta);
 	pObj->pvProcessSnsObj(pObj, eEv);
+A_PRINTF(LB"!*** 2) status(%d) u8status_init(%d) ***", pObj->u8State, u8status_init);
 
 	// 連続的に状態遷移させるための処理。pvProcessSnsObj() 処理後に状態が前回と変化が有れば、
 	// 再度 E_EVENT_NEW_STATE により実行する。
 	while (pObj->u8State != u8status_init) {
 		u8status_init = pObj->u8State;
+A_PRINTF(LB"!*** 3) status(%d) u8status_init(%d) ***", pObj->u8State, u8status_init);
 		pObj->pvProcessSnsObj(pObj, E_EVENT_NEW_STATE);
+A_PRINTF(LB"!*** 4) status(%d) u8status_init(%d) ***", pObj->u8State, u8status_init);
 	}
+A_PRINTF(LB"!*** vSnsObj_Process out ***");
 }
 

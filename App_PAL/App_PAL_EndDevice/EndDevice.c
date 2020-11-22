@@ -179,6 +179,7 @@ void cbAppColdStart(bool_t bAfterAhiInit) {
 
 			// ADC の初期化
 			vInitADC();
+A_PRINTF(LB"!*** AMB Init ***");
 			vInitAppENV();
 		} else
 		// PAL MOT
@@ -429,16 +430,10 @@ static void vInitHardware(int f_warm_start)
 	vSMBusInit();
 
 	if(!f_warm_start || sAppData.u8SnsID == 0){
-		if(bGetPALOptions()){
-			sAppData.u8SnsID = sPALData.u8PALModel;
-
-			// Warm Start でかつ PALのEEPROMが認識された場合、(つまり、PALが刺さっていない状態からPALが刺さった場合)再起動する。
-			if( f_warm_start && sAppData.u8SnsID != 0 ){
-				vAHI_SwReset();		// Rebootする
-			}
-		}else{
-			sAppData.u8SnsID = PKT_ID_NOCONNECT;
-		}
+		bGetPALOptions();
+		sPALData.u8PALModel = PKT_ID_AMB;	// PALモデルをAMBに設定
+//		sPALData.u8PALModel = PKT_ID_NOCONNECT;	// PALモデルをAMBに設定
+		sAppData.u8SnsID = sPALData.u8PALModel;
 	}
 
 	// WDTのための出力変化
@@ -504,6 +499,7 @@ static void vInitHardware(int f_warm_start)
 				u32DioPortWakeUp |= ( 1UL<<SNS_EN | 1UL<<SNS_INT );
 				break;
 			case PKT_ID_AMB:
+A_PRINTF(LB"!*** Hardware init ***");
 				vPortSetLo( EH_BOOT );
 				vPortDisablePullup( EH_BOOT );
 				vPortAsOutput( EH_BOOT );
