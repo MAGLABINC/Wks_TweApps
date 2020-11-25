@@ -143,6 +143,8 @@ void cbAppColdStart(bool_t bAfterAhiInit) {
 		} else {
 			SerCmdAscii_vInit(&sSerCmdOut, NULL, 128); // バッファを指定せず初期化
 		}
+		// finally start the MAC layer
+		ToCoNet_vMacStart();
 	}
 }
 

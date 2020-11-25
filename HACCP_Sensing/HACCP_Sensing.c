@@ -16,12 +16,15 @@
 #include "config.h"
 
 // DEBUG options
+#define SERIAL_DEBUG
 #include "serial.h"
 #include "fprintf.h"
 #include "sprintf.h"
 
 #include "SMBus.h"
 #include "TMP1075.h"
+
+#include "sercmd_gen.h"
 
 /****************************************************************************/
 /***        ToCoNet Definitions                                           ***/
@@ -39,6 +42,28 @@
 /****************************************************************************/
 /***        Macro Definitions                                             ***/
 /****************************************************************************/
+#define HALLIC	0x00
+#define TEMP	0x01
+#define HUM		0x02
+#define ILLUM	0x03
+#define ACCEL	0x04
+
+#define ADC		0x30
+#define DIO		0x31
+#define EEPROM	0x32
+
+#define TYPE_CHAR		0x00
+#define TYPE_SHORT		0x01
+#define TYPE_LONG		0x02
+#define TYPE_VARIABLE	0x03
+
+#define TYPE_SIGNED		0x04
+#define TYPE_UNSIGNED	0x00
+
+#define USE_EXBYTE		0x10
+#define UNUSE_EXBYTE	0x00
+
+#define ERROR			0x80
 
 /****************************************************************************/
 /***        Type Definitions                                              ***/
@@ -52,6 +77,7 @@ typedef struct
 
     // LED Counter
     uint32 u32LedCt;
+	uint16 u16LedDur_ct; //! LED点灯カウンタ
 
     // シーケンス番号
     uint32 u32Seq;
@@ -66,14 +92,14 @@ typedef struct
 /****************************************************************************/
 /***        Local Function Prototypes                                     ***/
 /****************************************************************************/
+void vSerOutput_PAL(tsRxPktInfo sRxPktInfo, uint8 *p);
 
 static void vProcessEvCore(tsEvent *pEv, teEvent eEvent, uint32 u32evarg);
 
 static void vInitHardware(int f_warm_start);
 
 void vSerialInit(uint32 u32Baud, tsUartOpt *pUartOpt);
-static void vHandleSerialInput(void);
-static void sendPacket(void);
+void vHandleSerialInput(void);
 
 int16 i16TransmitPingMessage(uint8 *pMsg);
 
@@ -105,7 +131,9 @@ const uint32 u32DioPortWakeUp = PORT_SW | PORT_RX;
 
 static uint8 u8KickedSensor; //!< 開始されたセンサーの種類
 static uint32 u32KickedTimeStamp; //! 開始されたタイムスタンプ
+static int16 tempResult;		//! 温度計測結果
 
+tsSerCmd_Context sSerCmdOut; //!< シリアル出力用
 
 /****************************************************************************
  *
@@ -116,11 +144,23 @@ static uint32 u32KickedTimeStamp; //! 開始されたタイムスタンプ
  * RETURNS:
  *
  ****************************************************************************/
+static bool_t bWakeupBySw;
+static bool_t bWakeupByRx;
 void cbAppColdStart(bool_t bAfterAhiInit)
 {
 	//static uint8 u8WkState;
 	if (!bAfterAhiInit) {
 		// before AHI init, very first of code.
+		bWakeupBySw = FALSE;
+		bWakeupByRx = FALSE;
+		if(u8AHI_WakeTimerFiredStatus()) {
+			// wake up timer
+		}
+		else if(u32AHI_DioWakeStatus() & PORT_RX) {
+			bWakeupByRx = TRUE;
+		} else {
+			bWakeupBySw = TRUE;
+		}
 
 		// Register modules
 		ToCoNet_REG_MOD_ALL();
@@ -155,15 +195,14 @@ void cbAppColdStart(bool_t bAfterAhiInit)
 		// MAC start
 		ToCoNet_vMacStart();
 
-		// TMP1075 start
-		if (bTMP1075reset()) {
-vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_SLAVE");
-			sModuleType = E_MODULE_SLAVE;	//!< Slave基板（センサあり）
-		}
-		else {
-vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_MASTER");
-			sModuleType = E_MODULE_MASTER;  //!< Master基板（センサなし）
-		}
+#ifdef SERIAL_DEBUG
+		if (bWakeupBySw)
+			vfPrintf(&sSerStream, LB "woke up from SW");
+		else if (bWakeupByRx)
+			vfPrintf(&sSerStream, LB "woke up from RX");
+		else
+			vfPrintf(&sSerStream, LB "woke up from Timer");
+#endif
 	}
 }
 
@@ -176,25 +215,12 @@ vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_MASTER");
  * RETURNS:
  *
  ****************************************************************************/
-static bool_t bWakeupBySw;
-static bool_t bWakeupByRx;
-
 void cbAppWarmStart(bool_t bAfterAhiInit)
 {
 	if (!bAfterAhiInit) {
 		// before AHI init, very first of code.
 		//  to check interrupt source, etc.
-		bWakeupBySw = FALSE;
-		bWakeupByRx = FALSE;
 
-		if(u8AHI_WakeTimerFiredStatus()) {
-			// wake up timer
-		}
-		else if(u32AHI_DioWakeStatus() & PORT_RX) {
-			bWakeupByRx = TRUE;
-		} else {
-			bWakeupBySw = TRUE;
-		}
 	} else {
 		// Initialize hardware
 		vInitHardware(TRUE);
@@ -202,32 +228,230 @@ void cbAppWarmStart(bool_t bAfterAhiInit)
 		// MAC start
 		ToCoNet_vMacStart();
 
-		if (bWakeupBySw)
-			vfPrintf(&sSerStream, LB "woke up from SW");
-		else if (bWakeupByRx)
-			vfPrintf(&sSerStream, LB "woke up from RX");
-		else
-			vfPrintf(&sSerStream, LB "woke up from Timer");
-
-		// TMP1075 start
-		if (bTMP1075reset()) {
-vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_SLAVE");
-			sModuleType = E_MODULE_SLAVE;	//!< Slave基板（センサあり）
-			if (bWakeupBySw) {
-vfPrintf(&sSerStream, "\r\n*** SW on ***");
-				sendPacket();
-			}
-		}
-		else {
-vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_MASTER");
-			sModuleType = E_MODULE_MASTER;  //!< Master基板（センサなし）
-		}
 	}
 }
 
 /****************************************************************************/
 /***        Local Functions                                               ***/
 /****************************************************************************/
+/**
+ * UART形式の出力 (PAL)
+ */
+void vSerOutput_PAL(tsRxPktInfo sRxPktInfo, uint8 *p) {
+	uint8 u8buff[256], *q = u8buff; // 出力バッファ
+
+	// 受信機のアドレス
+	S_BE_DWORD(sRxPktInfo.u32addr_rcvr);
+
+	// LQI
+	S_OCTET(sRxPktInfo.u8lqi_1st);
+
+	// フレーム
+	S_BE_WORD(sRxPktInfo.u16fct);
+
+	// 送信元子機アドレス
+	S_BE_DWORD(sRxPktInfo.u32addr_1st);
+	S_OCTET(sRxPktInfo.u8id);
+
+	// パケットの種別により処理を変更
+	S_OCTET(0x80);
+	S_OCTET(sRxPktInfo.u8pkt);
+
+	uint8 u8Length = G_OCTET();
+	S_OCTET(u8Length);
+	uint8 i = 0;
+
+	while( i<u8Length ){
+		uint8 u8Sensor = G_OCTET();
+
+		switch(u8Sensor){
+			case HALLIC:
+				_C{
+					uint8 u8num = G_OCTET();(void)u8num;
+					uint8 u8Status = G_OCTET();
+					S_OCTET(UNUSE_EXBYTE|TYPE_UNSIGNED|TYPE_CHAR);
+					S_OCTET(u8Sensor);
+					S_OCTET(0x00);
+					S_OCTET(0x01);
+					S_OCTET(u8Status);
+				}
+				break;
+			case TEMP:
+				_C{
+					uint8 u8num = G_OCTET();(void)u8num;
+					int16 i16temp = G_BE_WORD();
+
+					if(i16temp == -32767 || i16temp == -32768){
+						S_OCTET(ERROR|( (i16temp == -32767)?0x01:0x00 ));
+						S_OCTET(u8Sensor);
+						S_OCTET(0x00);
+						S_OCTET(0x00);
+					}else{
+						S_OCTET(UNUSE_EXBYTE|TYPE_SIGNED|TYPE_SHORT);
+						S_OCTET(u8Sensor);
+						S_OCTET(0x00);
+						S_OCTET(0x02);
+						S_BE_WORD(i16temp);
+					}
+				}
+				break;
+			case HUM:
+				_C{
+					uint8 u8num = G_OCTET();(void)u8num;
+					uint16 u16hum = G_BE_WORD();
+
+					if( u16hum == 0x8001 || u16hum == 0x8000 ){
+						S_OCTET(ERROR|( (u16hum == 0x8001)?0x01:0x00 ));
+						S_OCTET(u8Sensor);
+						S_OCTET(0x00);
+						S_OCTET(0x00);
+					}else{
+						S_OCTET(UNUSE_EXBYTE|TYPE_UNSIGNED|TYPE_SHORT);
+						S_OCTET(u8Sensor);
+						S_OCTET(0x00);
+						S_OCTET(0x02);
+						S_BE_WORD(u16hum);
+					}
+				}
+				break;
+			case ILLUM:
+				_C{
+					uint8 u8num = G_OCTET();(void)u8num;
+					uint32 u32illum = G_BE_DWORD();
+
+          	    	if(u32illum == 0xFFFFFFFE || u32illum == 0xFFFFFFFF ){
+						S_OCTET(ERROR|((u32illum == 0xFFFFFFFE)?0x01:0x00));
+						S_OCTET(u8Sensor);
+						S_OCTET(0x00);
+						S_OCTET(0x00);
+					}else{
+						S_OCTET(UNUSE_EXBYTE|TYPE_UNSIGNED|TYPE_LONG);
+						S_OCTET(u8Sensor);
+						S_OCTET(0x00);
+						S_OCTET(0x04);
+						S_BE_DWORD(u32illum);
+					}
+				}
+				break;
+
+			case ACCEL:
+				_C{
+					uint8 u8Int = G_OCTET();(void)u8Int;
+					uint8 u8Num = G_OCTET();
+					uint8 u8Sampling = G_OCTET();
+					u8Sampling = (u8Sampling<<5)&0xFF;		// 5bitシフトしておく
+					uint8 u8Bit = G_OCTET();(void)u8Bit;
+
+					uint8 j = 0;
+					while( j < u8Num ){
+						int16 X[2], Y[2], Z[2];
+
+						uint8 tmp = G_OCTET(); X[0] = tmp<<4;
+						tmp = G_OCTET(); X[0] |= (tmp>>4); Y[0] = (tmp&0x0F)<<8;
+						tmp = G_OCTET(); Y[0] |= tmp;
+						tmp = G_OCTET(); Z[0] = tmp<<4;
+						tmp = G_OCTET(); Z[0] |= (tmp>>4); X[1] = (tmp&0x0F)<<8;
+						tmp = G_OCTET(); X[1] |= tmp;
+						tmp = G_OCTET(); Y[1] = tmp<<4;
+						tmp = G_OCTET(); Y[1] |= (tmp>>4); Z[1] = (tmp&0x0F)<<8;
+                    	tmp = G_OCTET(); Z[1] |= tmp;
+
+						uint8 k;
+						for( k=0; k<2; k++ ){
+							S_OCTET(USE_EXBYTE|TYPE_SIGNED|TYPE_SHORT);
+							S_OCTET(u8Sensor);
+							S_OCTET((u8Sampling|(j+k)));
+							S_OCTET(0x06);
+
+							// 符号があれば上位4ビットをFで埋める
+							X[k] = (X[k]&0x0800) ? (X[k]|0xF000)*8:X[k]*8;
+							Y[k] = (Y[k]&0x0800) ? (Y[k]|0xF000)*8:Y[k]*8;
+							Z[k] = (Z[k]&0x0800) ? (Z[k]|0xF000)*8:Z[k]*8;
+							S_BE_WORD(X[k]);
+							S_BE_WORD(Y[k]);
+							S_BE_WORD(Z[k]);
+						}
+
+
+						j += 2;
+					}
+					i += (u8Num-1);
+				}
+				break;
+			case ADC:
+				_C{
+					uint8 u8num = G_OCTET();
+					uint16 u16ADC = 0;
+					if(u8num == 0x01 || u8num == 0x08){
+						u8num = 0x08;
+						uint8 u8Pwr = G_OCTET();
+						u16ADC = DECODE_VOLT(u8Pwr);
+					}else{
+						u8num--;
+						u16ADC = G_BE_WORD();
+					}
+					S_OCTET(USE_EXBYTE|TYPE_UNSIGNED|TYPE_SHORT);
+					S_OCTET(u8Sensor);
+					S_OCTET(u8num);
+					S_OCTET(0x02);
+					S_BE_WORD(u16ADC);
+				}
+				break;
+			case DIO:
+				_C{
+					uint8	u8num = G_OCTET();
+					uint32	u32DIO;
+					if(u8num <= 8){
+						u32DIO = G_OCTET();
+						S_OCTET(USE_EXBYTE|TYPE_UNSIGNED|TYPE_CHAR);
+					}else if(u8num<=16){
+						u32DIO = G_BE_WORD();
+						S_OCTET(USE_EXBYTE|TYPE_UNSIGNED|TYPE_SHORT);
+					}else{
+						u32DIO = G_BE_DWORD();
+                    	S_OCTET(USE_EXBYTE|TYPE_UNSIGNED|TYPE_LONG);
+					}
+					S_OCTET(u8Sensor);
+					S_OCTET(u8num);
+					if(u8num <= 8){
+						S_OCTET(0x01);
+						S_OCTET(u32DIO&0xFF);
+					}else if(u8num<=16){
+						S_OCTET(0x02);
+						S_BE_WORD(u32DIO&0xFFFF);
+					}else{
+						S_OCTET(0x04);
+						S_BE_DWORD(u32DIO);
+					}				
+				}
+				break;
+			case EEPROM:
+				_C{
+					uint8 u8num = G_OCTET();
+					uint8 u8Status = G_OCTET();
+					S_OCTET(0x80|(u8Status&0x7F));
+					S_OCTET(u8Sensor);
+					S_OCTET(u8num);
+					S_OCTET(0x00);
+				}
+				break;
+			default:
+				break;
+		}
+
+		i++;
+	}
+	uint8 u8crc = (uint8)u8CCITT8( u8buff, q-u8buff );
+	S_OCTET(u8crc);
+
+	sSerCmdOut.u16len = q - u8buff;
+	sSerCmdOut.au8data = u8buff;
+
+	// if(!Interactive_bGetMode()) sSerCmdOut.vOutput(&sSerCmdOut, &sSerStream);
+
+	sSerCmdOut.au8data = NULL;
+}
+
 /****************************************************************************
  *
  * NAME: vMain
@@ -272,39 +496,74 @@ void cbToCoNet_vNwkEvent(teEvent eEvent, uint32 u32arg) {
  *
  ****************************************************************************/
 void cbToCoNet_vRxEvent(tsRxDataApp *pRx) {
-	int i;
+	tsRxPktInfo sRxPktInfo;
 
-	// print coming payload
-	vfPrintf(&sSerStream, LB"[PKT Ad:%04x,Ln:%03d,Seq:%03d,Lq:%03d,Tms:%05d \"",
-			pRx->u32SrcAddr,
-			pRx->u8Len+4, // Actual payload byte: the network layer uses additional 4 bytes.
-			pRx->u8Seq,
-			pRx->u8Lqi,
-			pRx->u32Tick & 0xFFFF);
-	for (i = 0; i < pRx->u8Len; i++) {
-		if (i < 32) {
-			sSerStream.bPutChar(sSerStream.u8Device,
-					(pRx->auData[i] >= 0x20 && pRx->auData[i] <= 0x7f) ? pRx->auData[i] : '.');
-		} else {
-			vfPrintf(&sSerStream, "..");
-			break;
-		}
-	}
-	vfPrintf(&sSerStream, "C\"]");
+	uint8 *p = pRx->auData;
 
-	// Slave基板（センサあり）
-	if (sModuleType == E_MODULE_SLAVE) {
-		if (!u8KickedSensor) {
-			bool_t bres = bTMP1075startRead();
-			if (bres) {
-				vfPrintf(&sSerStream, "Start TMP1075 temperature sensing");
-				u8KickedSensor = KICKED_SENSOR_TMP1075;
-				u32KickedTimeStamp = u32TickCount_ms + 32;
-			} else {
-				vfPrintf(&sSerStream, LB "TMP1075 is not found.");
-			}
+	// // 暗号化対応時に平文パケットは受信しない
+	// if (IS_APPCONF_OPT_SECURE()) {
+	// 	if (!pRx->bSecurePkt) {
+	// 		return;
+	// 	}
+	// }
+
+	// パケットの表示
+	if (pRx->u8Cmd == TOCONET_PACKET_CMD_APP_DATA) {
+		// 基本情報
+		sRxPktInfo.u8lqi_1st = pRx->u8Lqi;
+		sRxPktInfo.u32addr_1st = pRx->u32SrcAddr;
+
+		// データの解釈
+		uint8 u8b = G_OCTET();
+
+		// PALからのパケットかどうかを判定する
+		u8b = u8b&0x7F;
+
+		// 違うデータなら表示しない
+		if( u8b != 'T' && u8b != 'R' ){
+			return;
 		}
+
+		// LED の点灯を行う
+		sAppData.u16LedDur_ct = 25;
+
+		// 受信機アドレス
+		sRxPktInfo.u32addr_rcvr = TOCONET_NWK_ADDR_PARENT;
+		if (u8b == 'R') {
+			// ルータからの受信
+			sRxPktInfo.u32addr_1st = G_BE_DWORD();
+			sRxPktInfo.u8lqi_1st = G_OCTET();
+
+			sRxPktInfo.u32addr_rcvr = pRx->u32SrcAddr;
+		}
+
+		// ID などの基本情報
+		sRxPktInfo.u8id = G_OCTET();
+		sRxPktInfo.u16fct = G_BE_WORD();
+
+		// パケットの種別により処理を変更
+		sRxPktInfo.u8pkt = G_OCTET();
+
+		// 出力用の関数を呼び出す
+		vSerOutput_PAL(sRxPktInfo, p);
 	}
+
+	// int i;
+
+	// //!< Master基板（センサなし）
+	// if (sModuleType == E_MODULE_MASTER) {
+	// 	// print coming payload
+	// 	vfPrintf(&sSerStream, LB"[PKT Ad:%04x,Ln:%03d,Seq:%03d,Lq:%03d,Tms:%05d [",
+	// 			pRx->u32SrcAddr,
+	// 			pRx->u8Len+4, // Actual payload byte: the network layer uses additional 4 bytes.
+	// 			pRx->u8Seq,
+	// 			pRx->u8Lqi,
+	// 			pRx->u32Tick & 0xFFFF);
+	// 	for (i = 0; i < pRx->u8Len; i++) {
+	// 		vfPrintf(&sSerStream, "%02X", pRx->auData[i]);
+	// 	}
+	// 	vfPrintf(&sSerStream, "]");
+	// }
 }
 
 /****************************************************************************
@@ -344,22 +603,26 @@ void cbToCoNet_vHwEvent(uint32 u32DeviceId, uint32 u32ItemBitmap)
 {
     switch (u32DeviceId) {
     case E_AHI_DEVICE_TICK_TIMER:
-		// LED BLINK
-   		vPortSet_TrueAsLo(LED, u32TickCount_ms & 0x400);
+		// // LED BLINK
+   		// vPortSet_TrueAsLo(LED, u32TickCount_ms & 0x100);
 
 		if (u8KickedSensor && (u32TickCount_ms - u32KickedTimeStamp) < 0x80000000) { // タイムアウトした
-			int16 i16res;
 			SPRINTF_vRewind();
 
 			if (u8KickedSensor == KICKED_SENSOR_TMP1075) {
-				i16res = i16TMP1075readResult();
-				vfPrintf(SPRINTF_Stream, "%d[oC x 100]", i16res);
+				u8KickedSensor = 0;
+				tempResult = i16TMP1075readResult();
 			}
 			u8KickedSensor = 0;
-
-			vfPrintf(&sSerStream, "%s", SPRINTF_pu8GetBuff());
 			i16TransmitPingMessage(SPRINTF_pu8GetBuff());
 		}
+
+   		//LED ON when receive
+   		if (u32TickCount_ms - sAppData.u32LedCt < 300) {
+   			vPortSetLo(LED);
+   		} else {
+  			vPortSetHi(LED);
+   		}
 		break;
 
     default:
@@ -379,24 +642,36 @@ int16 i16TransmitPingMessage(uint8 *pMsg) {
 	tsTx.u32DstAddr = 0xFFFF; // ブロードキャスト
 
 	tsTx.bAckReq = FALSE;
-	tsTx.u8Retry = 0; // ブロードキャストで都合３回送る
+	tsTx.u8Retry = 0;
 	tsTx.u8CbId = sAppData.u32Seq & 0xFF;
 	tsTx.u8Seq = sAppData.u32Seq & 0xFF;
 	tsTx.u8Cmd = TOCONET_PACKET_CMD_APP_DATA;
 
-	// SPRINTF でメッセージを作成
-	S_OCTET('P');
-	S_OCTET('I');
-	S_OCTET('N');
-	S_OCTET('G');
-	S_OCTET(':');
-	S_OCTET(' ');
+	S_OCTET(5);		// データ数
 
-	uint8 u8len = strlen((const char *)pMsg);
-	memcpy(q, pMsg, u8len);
-	q += u8len;
-	tsTx.u8Len = q - tsTx.auData;
+	S_OCTET(0x30);					// 電圧
+	S_OCTET(0x01);					// 電源電圧
+//	S_OCTET(sAppData.u8Batt);
+	S_OCTET(0x80);					// 仮に 3.37V
 
+	S_OCTET(0x30);					// 電圧
+	S_OCTET(0x02);					// ADC1(AI1)
+//	S_BE_WORD(sAppData.u16Adc[0]);
+	S_BE_WORD(1647);				// 仮に 1647
+
+	S_OCTET(0x01);			// Temp
+	S_OCTET(0x00);
+	S_BE_WORD(tempResult);
+
+	S_OCTET(0x02);			// Hum
+	S_OCTET(0x00);
+	S_BE_WORD(0);
+
+	S_OCTET(0x03);			// Lux
+	S_OCTET(0x00);
+	S_BE_DWORD(0);
+
+	tsTx.u8Len = q-tsTx.auData;
 	// 送信
 	if (ToCoNet_bMacTxReq(&tsTx)) {
 		// LEDの制御
@@ -516,7 +791,7 @@ void vSerialInit(uint32 u32Baud, tsUartOpt *pUartOpt) {
  *
  * NOTES:
  ****************************************************************************/
-static void vHandleSerialInput(void)
+void vHandleSerialInput(void)
 {
     // handle UART command
 	while (!SERIAL_bRxQueueEmpty(sSerPort.u8SerialPort)) {
@@ -526,46 +801,30 @@ static void vHandleSerialInput(void)
 
 	    SERIAL_vFlush(sSerStream.u8Device);
 
-		if (i16Char == 't') {
-			vfPrintf(&sSerStream, "\n\r# [%c] --> ", i16Char);
-			sendPacket();
+		//!< Slave基板（センサあり）
+		if (i16Char == 't' && sModuleType == E_MODULE_SLAVE) {
+			if (!u8KickedSensor) {
+				// TMP1075 start
+				bool_t bres = bTMP1075startRead();
+				if (bres) {
+#ifdef SERIAL_DEBUG
+					vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_SLAVE");
+#endif
+					sModuleType = E_MODULE_SLAVE;	//!< Slave基板（センサあり）
+					u8KickedSensor = KICKED_SENSOR_TMP1075;
+					u32KickedTimeStamp = u32TickCount_ms + TMP1075_CONVTIME;
+				} else {
+#ifdef SERIAL_DEBUG
+					vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_MASTER");
+#endif
+					sModuleType = E_MODULE_MASTER;  //!< Master基板（センサなし）
+				}
+			}
 		}
 
 		vfPrintf(&sSerStream, LB);
 	    SERIAL_vFlush(sSerStream.u8Device);
 	}
-}
-
-static void sendPacket(void) {
-	// transmit Ack back
-	tsTxDataApp tsTx;
-	memset(&tsTx, 0, sizeof(tsTxDataApp));
-
-	sAppData.u32Seq++;
-
-	tsTx.u32SrcAddr = ToCoNet_u32GetSerial(); // 自身のアドレス
-	tsTx.u32DstAddr = 0xFFFF; // ブロードキャスト
-
-	tsTx.bAckReq = FALSE;
-	tsTx.u8Retry = 0x82; // ブロードキャストで都合３回送る
-	tsTx.u8CbId = sAppData.u32Seq & 0xFF;
-	tsTx.u8Seq = sAppData.u32Seq & 0xFF;
-	tsTx.u8Cmd = TOCONET_PACKET_CMD_APP_DATA;
-
-	// SPRINTF でメッセージを作成
-	SPRINTF_vRewind();
-	vfPrintf(SPRINTF_Stream, "PING: %08X", ToCoNet_u32GetSerial());
-	memcpy(tsTx.auData, SPRINTF_pu8GetBuff(), SPRINTF_u16Length());
-	tsTx.u8Len = SPRINTF_u16Length();
-
-	// 送信
-	ToCoNet_bMacTxReq(&tsTx);
-
-	// LEDの制御
-	sAppData.u32LedCt = u32TickCount_ms;
-
-	// ＵＡＲＴに出力
-	vfPrintf(&sSerStream, LB "Fire PING Broadcast Message.");
 }
 
 /****************************************************************************
@@ -590,6 +849,26 @@ static void vProcessEvCore(tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 	    } else {
 	    	vfPrintf(&sSerStream, "\r\n*** TWELITE NET PINGPONG SAMPLE %d.%02d-%d ***", VERSION_MAIN, VERSION_SUB, VERSION_VAR);
 	    	vfPrintf(&sSerStream, "\r\n*** %08x ***", ToCoNet_u32GetSerial());
+			//!< Slave基板（センサあり）
+			if (!u8KickedSensor) {
+				// SMBUS の初期化
+				vSMBusInit();
+				// TMP1075 start
+				bool_t bres = bTMP1075startRead();
+				if (bres) {
+#ifdef SERIAL_DEBUG
+					vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_SLAVE");
+#endif
+					sModuleType = E_MODULE_SLAVE;	//!< Slave基板（センサあり）
+					u8KickedSensor = KICKED_SENSOR_TMP1075;
+					u32KickedTimeStamp = u32TickCount_ms + TMP1075_CONVTIME;
+				} else {
+#ifdef SERIAL_DEBUG
+					vfPrintf(&sSerStream, LB "sModuleType = E_MODULE_MASTER");
+#endif
+					sModuleType = E_MODULE_MASTER;  //!< Master基板（センサなし）
+				}
+			}
 	    }
 	}
 }

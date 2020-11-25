@@ -52,7 +52,7 @@ extern "C" {
 // その他の設定
 #define USE_MODE_PIN
 #define USE_BPS_PIN
-#define UART_MODE_DEFAULT 3 //!< 0:Transparent, 1:Ascii format, 2:Binary, 3:Chat
+#define UART_MODE_DEFAULT 2 //!< 0:Transparent, 1:Ascii format, 2:Binary, 3:Chat
 
 #define DEFAULT_TX_FFFF_COUNT 0x82 //!< デフォルトの再送回数
 #define DEFAULT_TX_FFFF_DUR_ms 4 //!< 再送時の間隔

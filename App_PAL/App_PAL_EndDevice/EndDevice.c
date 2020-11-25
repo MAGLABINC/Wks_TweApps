@@ -200,6 +200,9 @@ A_PRINTF(LB"!*** AMB Init ***");
 			ToCoNet_Event_Register_State_Machine(pvProcessEv);
 		}
 
+		// MAC start
+		ToCoNet_vMacStart();
+
 		// ToCoNet DEBUG
 		ToCoNet_vDebugInit(&sSerStream);
 		ToCoNet_vDebugLevel(TOCONET_DEBUG_LEVEL);

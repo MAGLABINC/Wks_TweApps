@@ -2,8 +2,8 @@
  * Released under MW-SLA-*J,*E (MONO WIRELESS SOFTWARE LICENSE   *
  * AGREEMENT).                                                   */
 
-#ifndef  CONFIG_H_INCLUDED
-#define  CONFIG_H_INCLUDED
+#ifndef  LIS3DH_INCLUDED
+#define  LIS3DH_INCLUDED
 
 #if defined __cplusplus
 extern "C" {
@@ -12,65 +12,26 @@ extern "C" {
 /****************************************************************************/
 /***        Include Files                                                 ***/
 /****************************************************************************/
-#include <AppHardwareApi.h>
-#include "utils.h"
-
-#include "common.h"
 
 /****************************************************************************/
 /***        Macro Definitions                                             ***/
 /****************************************************************************/
-
-/* Serial Configuration */
-#define UART_BAUD   		115200
-#define UART_BAUD_SAFE		115200
-#define UART_PARITY_ENABLE	E_AHI_UART_PARITY_DISABLE
-#define UART_PARITY_TYPE 	E_AHI_UART_ODD_PARITY // if enabled
-#define UART_BITLEN			E_AHI_UART_WORD_LEN_8
-#define UART_STOPBITS 		E_AHI_UART_1_STOP_BIT
-
-/* Specify which serial port to use when outputting debug information */
-#define UART_PORT			E_AHI_UART_0
-
-/* Specify the PAN ID and CHANNEL to be used by tags, readers and gateway */
-#define APP_ID				0x67726305
-
-#define APP_NAME            "App_PAL"
-#define CHANNEL				15
-#define CHMASK              (1UL << CHANNEL)
-
-#define DEFAULT_ENC_KEY     (0xA5A5A5A5)
-
-/**
- * 子機のデフォルトスリープ周期
- */
-#define DEFAULT_SLEEP_DUR (1UL)
-
-/*************************************************************************/
-/***        TARGET PCB                                                 ***/
-/*************************************************************************/
-#define LED_ON() vPortSetLo(OUTPUT_LED)
-#define LED_OFF() vPortSetHi(OUTPUT_LED)
-
-#define PORT_INPUT_MASK ( 1UL << INPUT_SWSET )
-
-#ifdef PARENT
-# define sAppData sAppData_Pa
-#endif
-#ifdef ROUTER
-# define sAppData sAppData_Ro
-#endif
-#ifdef ENDDEVICE
-# define sAppData sAppData_Ed
-#endif
 
 /****************************************************************************/
 /***        Type Definitions                                              ***/
 /****************************************************************************/
 
 /****************************************************************************/
-/***        Exported Functions                                            ***/
+/***        Exported Functions (state machine)                            ***/
 /****************************************************************************/
+
+/****************************************************************************/
+/***        Exported Functions (primitive funcs)                          ***/
+/****************************************************************************/
+PUBLIC bool_t bLIS3DHreset();
+PUBLIC bool_t bLIS3DHstartRead();
+PUBLIC int16 i16LIS3DHreadResult();
+PUBLIC bool_t bLIS3DHstartConvert();
 
 /****************************************************************************/
 /***        Exported Variables                                            ***/
@@ -80,8 +41,9 @@ extern "C" {
 }
 #endif
 
-#endif  /* CONFIG_H_INCLUDED */
+#endif  /* LIS3DH_INCLUDED */
 
 /****************************************************************************/
 /***        END OF FILE                                                   ***/
 /****************************************************************************/
+

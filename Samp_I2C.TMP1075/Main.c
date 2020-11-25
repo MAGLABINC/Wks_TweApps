@@ -12,7 +12,7 @@
 
 #include "utils.h"
 
-#include "Samp_PingPong.h"
+#include "Main.h"
 #include "config.h"
 
 // DEBUG options
@@ -20,6 +20,16 @@
 #include "serial.h"
 #include "fprintf.h"
 #include "sprintf.h"
+
+#include "SMBus.h"
+#include "24XX00.h"
+#include "BH1715.h"
+#include "SHT21.h"
+#include "MPL115A2.h"
+#include "ADT7410.h"
+#include "ADXL345.h"
+#include "LIS3DH.h"
+#include "TMP1075.h"
 
 /****************************************************************************/
 /***        ToCoNet Definitions                                           ***/
@@ -58,7 +68,6 @@ typedef struct
     uint8 u8SleepCt;
 } tsAppData;
 
-#define LED	5
 
 /****************************************************************************/
 /***        Local Function Prototypes                                     ***/
@@ -70,6 +79,8 @@ static void vInitHardware(int f_warm_start);
 
 void vSerialInit(uint32 u32Baud, tsUartOpt *pUartOpt);
 static void vHandleSerialInput(void);
+
+int16 i16TransmitPingMessage(uint8 *pMsg);
 
 /****************************************************************************/
 /***        Exported Variables                                            ***/
@@ -90,6 +101,19 @@ tsSerialPortSetup sSerPort;
 
 // Wakeup port
 const uint32 u32DioPortWakeUp = 1UL << 7; // UART Rx Port
+
+// センサー状況
+#define KICKED_SENSOR_SHT21_TEMP 1
+#define KICKED_SENSOR_SHT21_HUMD 2
+#define KICKED_SENSOR_BH1715 3
+#define KICKED_SENSOR_MPL115 4
+#define KICKED_SENSOR_ADT7410 5
+#define KICKED_SENSOR_LIS3DH 6
+#define KICKED_SENSOR_ADXL345 7
+#define KICKED_SENSOR_TMP1075 8
+
+static uint8 u8KickedSensor; //!< 開始されたセンサーの種類
+static uint32 u32KickedTimeStamp; //! 開始されたタイムスタンプ
 
 /****************************************************************************
  *
@@ -251,7 +275,6 @@ void cbToCoNet_vRxEvent(tsRxDataApp *pRx) {
 		&& !memcmp(pRx->auData, "PING:", 5) // パケットの先頭は PING: の場合
 	) {
 		u16seqPrev = pRx->u8Seq;
-
 		// transmit Ack back
 		tsTxDataApp tsTx;
 		memset(&tsTx, 0, sizeof(tsTxDataApp));
@@ -265,6 +288,9 @@ void cbToCoNet_vRxEvent(tsRxDataApp *pRx) {
 		tsTx.u8Seq = pRx->u8Seq;
 		tsTx.u8Len = pRx->u8Len;
 		tsTx.u8Cmd = TOCONET_PACKET_CMD_APP_DATA;
+
+		tsTx.u16DelayMin = 64; // 最小遅延
+		tsTx.u16DelayMax = 256; // 最大遅延
 
 		if (tsTx.u8Len > 0) {
 			memcpy(tsTx.auData, pRx->auData, tsTx.u8Len);
@@ -319,23 +345,76 @@ void cbToCoNet_vTxEvent(uint8 u8CbId, uint8 bStatus) {
  ****************************************************************************/
 void cbToCoNet_vHwEvent(uint32 u32DeviceId, uint32 u32ItemBitmap)
 {
-    switch (u32DeviceId) {
-    case E_AHI_DEVICE_TICK_TIMER:
+	switch (u32DeviceId) {
+	case E_AHI_DEVICE_TICK_TIMER:
 		// LED BLINK
-   		// vPortSet_TrueAsLo(PORT_KIT_LED2, u32TickCount_ms & 0x400);
-   		vPortSet_TrueAsLo(LED, u32TickCount_ms & 0x400);
+		vPortSet_TrueAsLo(PORT_KIT_LED2, u32TickCount_ms & 0x400);
 
-   		// LED ON when receive
-   		// if (u32TickCount_ms - sAppData.u32LedCt < 300) {
-   		// 	vPortSetLo(PORT_KIT_LED1);
-   		// } else {
-  		// 	vPortSetHi(PORT_KIT_LED1);
-   		// }
-    	break;
+		// LED ON when receive
+		if (u32TickCount_ms - sAppData.u32LedCt < 300) {
+			vPortSetLo(PORT_KIT_LED1);
+		} else {
+			vPortSetHi(PORT_KIT_LED1);
+		}
 
-    default:
-    	break;
-    }
+		if (u8KickedSensor && (u32TickCount_ms - u32KickedTimeStamp) < 0x80000000) { // タイムアウトした
+			int16 i16res;
+
+			SPRINTF_vRewind();
+
+			switch(u8KickedSensor) {
+				case KICKED_SENSOR_MPL115:
+					i16res = i16MPL115readResult();
+					vfPrintf(SPRINTF_Stream, "MPL115A2 --> %d[hPa]" LB, i16res);
+					break;
+
+				case KICKED_SENSOR_BH1715:
+					i16res = i16BH1715readResult();
+					vfPrintf(SPRINTF_Stream, "BH1715 --> %d[lx]" LB, i16res * 5L);
+					break;
+
+				case KICKED_SENSOR_SHT21_HUMD:
+					i16res = i16SHT21readResult(NULL, NULL);
+					vfPrintf(SPRINTF_Stream, "SHT21 --> %d[%% x 100]" LB, i16res);
+					break;
+
+				case KICKED_SENSOR_SHT21_TEMP:
+					i16res = i16SHT21readResult(NULL, NULL);
+					vfPrintf(SPRINTF_Stream, "SHT21 --> %d[oC x 100]" LB, i16res);
+					break;
+
+				case KICKED_SENSOR_ADT7410:
+//					i16res = i16ADT7410readResult( TRUE );
+					i16res = i16ADT7410readResult( FALSE );
+					vfPrintf(SPRINTF_Stream, "ADT7410 --> %d[oC x 100]" LB, i16res);
+					break;
+
+				case KICKED_SENSOR_LIS3DH:
+					i16res = i16LIS3DHreadResult( FALSE );
+					vfPrintf(SPRINTF_Stream, "LIS3DH --> %d" LB, i16res);
+					break;
+
+				case KICKED_SENSOR_ADXL345:
+					i16res = i16ADXL345readResult( );
+					vfPrintf(SPRINTF_Stream, "ADXL345 --> %d" LB, i16res);
+					break;
+
+				case KICKED_SENSOR_TMP1075:
+					i16res = i16TMP1075readResult();
+					vfPrintf(SPRINTF_Stream, " > %d[oC x 100]" LB, i16res);
+					break;
+
+			}
+			u8KickedSensor = 0;
+
+			vfPrintf(&sSerStream, "%s", SPRINTF_pu8GetBuff());
+			i16TransmitPingMessage(SPRINTF_pu8GetBuff());
+		}
+		break;
+
+	default:
+		break;
+	}
 }
 
 /****************************************************************************
@@ -390,15 +469,17 @@ static void vInitHardware(int f_warm_start)
 
 
 	ToCoNet_vDebugInit(&sSerStream);
-	ToCoNet_vDebugLevel(3);
+	ToCoNet_vDebugLevel(0);
 
 	/// IOs
-	// vPortSetLo(PORT_KIT_LED1);
-	// vPortSetHi(PORT_KIT_LED2);
-	// vPortAsOutput(PORT_KIT_LED1);
-	// vPortAsOutput(PORT_KIT_LED2);
-	vPortSetHi(LED);
-	vPortAsOutput(LED);
+	vPortSetLo(PORT_KIT_LED1);
+	vPortSetHi(PORT_KIT_LED2);
+	vPortAsOutput(PORT_KIT_LED1);
+	vPortAsOutput(PORT_KIT_LED2);
+
+
+	// SMBUS
+	vSMBusInit();
 }
 
 /****************************************************************************
@@ -412,8 +493,8 @@ static void vInitHardware(int f_warm_start)
  ****************************************************************************/
 void vSerialInit(uint32 u32Baud, tsUartOpt *pUartOpt) {
 	/* Create the debug port transmit and receive queues */
-	static uint8 au8SerialTxBuffer[96];
-	static uint8 au8SerialRxBuffer[32];
+	static uint8 au8SerialTxBuffer[864];
+	static uint8 au8SerialRxBuffer[128];
 
 	/* Initialise the serial port to be used for debug output */
 	sSerPort.pu8SerialRxQueueBuffer = au8SerialRxBuffer;
@@ -445,16 +526,153 @@ void vSerialInit(uint32 u32Baud, tsUartOpt *pUartOpt) {
  ****************************************************************************/
 static void vHandleSerialInput(void)
 {
-    // handle UART command
+	// handle UART command
 	while (!SERIAL_bRxQueueEmpty(sSerPort.u8SerialPort)) {
 		int16 i16Char;
 
 		i16Char = SERIAL_i16RxChar(sSerPort.u8SerialPort);
 
-		vfPrintf(&sSerStream, "\n\r# [%c] --> ", i16Char);
+		vfPrintf(&sSerStream, "# [%c] --> ", i16Char);
 	    SERIAL_vFlush(sSerStream.u8Device);
 
 		switch(i16Char) {
+		case 'm': // MPL115A2
+			if (!u8KickedSensor) {
+				bool_t bres = bMPL115startRead();
+				if (bres) {
+					vfPrintf(&sSerStream, LB "Start MPL115 sensing...");
+					u8KickedSensor = KICKED_SENSOR_MPL115;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "MPL115 is not found.");
+				}
+			}
+			break;
+
+		case 'b': // BH1715
+			if (!u8KickedSensor) {
+				bool_t bres = bBH1715startRead();
+				if (bres) {
+					vfPrintf(&sSerStream, LB "Start BH1715 sensing...");
+					u8KickedSensor = KICKED_SENSOR_BH1715;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "BH1715 is not found.");
+				}
+			}
+			break;
+
+		case 'a': // ADT7410
+			if (!u8KickedSensor) {
+//				bool_t bres = bADT7410reset( TRUE );
+				bool_t bres = bADT7410startRead();
+				if (bres) {
+					vfPrintf(&sSerStream, LB "Start ADT7410 sensing...");
+					u8KickedSensor = KICKED_SENSOR_ADT7410;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "ADT7410 is not found.");
+				}
+			}
+			break;
+
+		case 'l': // LIS3DH
+			if (!u8KickedSensor) {
+				bool_t bres = bLIS3DHstartRead();
+				if (bres) {
+					vfPrintf(&sSerStream, LB "Start LIS3DH sensing...");
+					u8KickedSensor = KICKED_SENSOR_LIS3DH;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "LIS3DH is not found.");
+				}
+			}
+			break;
+
+		case 'n': // ADXL345
+			if (!u8KickedSensor) {
+				bool_t bres = bADXL345startRead();
+				if (bres) {
+					vfPrintf(&sSerStream, LB "Start ADXL345 sensing...");
+					u8KickedSensor = KICKED_SENSOR_ADXL345;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "ADXL345 is not found.");
+				}
+			}
+			break;
+
+		case 's': // SHT21 Temperature
+			if (!u8KickedSensor) {
+				bool_t bres = bSHT21startRead(SHT21_TRIG_TEMP);
+				if (bres) {
+					vfPrintf(&sSerStream, LB "Start SHT21 temperature sensing...");
+					u8KickedSensor = KICKED_SENSOR_SHT21_TEMP;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "SHT21 is not found.");
+				}
+			}
+			break;
+
+		case 'h': // SHT21 Humidity
+			if (!u8KickedSensor) {
+				bool_t bres = bSHT21startRead(SHT21_TRIG_HUMID);
+				if (bres) {
+					vfPrintf(&sSerStream, LB "Start SHT21 humidity sensing...");
+					u8KickedSensor = KICKED_SENSOR_SHT21_HUMD;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "SHT21 is not found.");
+				}
+			}
+			break;
+
+		case 'z': // TMP1075 Temperature
+			if (!u8KickedSensor) {
+				bool_t bres = bTMP1075startRead();
+				if (bres) {
+					vfPrintf(&sSerStream, "Start TMP1075 temperature sensing");
+					u8KickedSensor = KICKED_SENSOR_TMP1075;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "TMP1075 is not found.");
+				}
+			}
+			break;
+
+		case 'e': // 24AA00
+			_C {
+				#define U8SIZ 8
+				static uint32 u32ct = 0;
+				bool_t bOk;
+				uint8 u8buf[U8SIZ], i, *p;
+
+				vWait(10000);
+
+				for (i = 0; i < U8SIZ; i++) {
+					u8buf[i] = 0xA5;
+				}
+				bOk = b24xx01_Read(0, u8buf, U8SIZ);
+
+				vfPrintf(&sSerStream,  "\n\r24AA01 READ(%d):", bOk);
+
+				for (i = 0; i < U8SIZ; i++) {
+					vfPrintf(&sSerStream,  " %02X", u8buf[i]);
+				}
+
+				p = (uint8*)&(u32ct);
+
+				for (i = 0; i < U8SIZ; i++) {
+					u8buf[i] = p[i % 4];
+				}
+				bOk = b24xx01_Write(0, u8buf, U8SIZ);
+
+				vfPrintf(&sSerStream, "\n\r24AA01 WRITE(%d):", bOk);
+
+				u32ct++;
+			}
+			break;
 
 		case '>': case '.':
 			/* channel up */
@@ -486,81 +704,8 @@ static void vHandleSerialInput(void)
 			}
 			break;
 
-		case 's': case 'S':
-			// スリープのテストコード
-			_C {
-				// print message.
-				sAppData.u8SleepCt++;
-
-				// stop interrupt source, if interrupt source is still running.
-				;
-
-				vfPrintf(&sSerStream, "now sleeping" LB);
-				SERIAL_vFlush(sSerStream.u8Device); // flushing
-
-				if (i16Char == 's') {
-					vAHI_UartDisable(sSerStream.u8Device);
-				}
-
-				// set UART Rx port as interrupt source
-				vAHI_DioSetDirection(u32DioPortWakeUp, 0); // set as input
-
-				(void)u32AHI_DioInterruptStatus(); // clear interrupt register
-				vAHI_DioWakeEnable(u32DioPortWakeUp, 0); // also use as DIO WAKE SOURCE
-				// vAHI_DioWakeEdge(0, PORT_INPUT_MASK); // 割り込みエッジ（立下りに設定）
-				vAHI_DioWakeEdge(u32DioPortWakeUp, 0); // 割り込みエッジ（立上がりに設定）
-				// vAHI_DioWakeEnable(0, PORT_INPUT_MASK); // DISABLE DIO WAKE SOURCE
-
-				// wake up using wakeup timer as well.
-				// ToCoNet_vSleep(E_AHI_WAKE_TIMER_0, 0, FALSE, TRUE); // RAM OFF SLEEP USING WK0
-				ToCoNet_vSleep(E_AHI_WAKE_TIMER_0, 0, FALSE, FALSE); // RAM ON SLEEP USING WK0
-			}
-			break;
-
-		case 'p':
-			// 出力調整のテスト
-			_C {
-				static uint8 u8pow = 3; // (MIN)0..3(MAX)
-
-				u8pow = (u8pow + 1) % 4;
-				vfPrintf(&sSerStream, "set power to %d.", u8pow);
-
-				sToCoNet_AppContext.u8TxPower = u8pow;
-				ToCoNet_vRfConfig();
-			}
-			break;
-
 		case 't': // パケット送信してみる
 			_C {
-				// transmit Ack back
-				tsTxDataApp tsTx;
-				memset(&tsTx, 0, sizeof(tsTxDataApp));
-
-				sAppData.u32Seq++;
-
-				tsTx.u32SrcAddr = ToCoNet_u32GetSerial(); // 自身のアドレス
-				tsTx.u32DstAddr = 0xFFFF; // ブロードキャスト
-
-				tsTx.bAckReq = FALSE;
-				tsTx.u8Retry = 0x82; // ブロードキャストで都合３回送る
-				tsTx.u8CbId = sAppData.u32Seq & 0xFF;
-				tsTx.u8Seq = sAppData.u32Seq & 0xFF;
-				tsTx.u8Cmd = TOCONET_PACKET_CMD_APP_DATA;
-
-				// SPRINTF でメッセージを作成
-				SPRINTF_vRewind();
-				vfPrintf(SPRINTF_Stream, "PING: %08X", ToCoNet_u32GetSerial());
-				memcpy(tsTx.auData, SPRINTF_pu8GetBuff(), SPRINTF_u16Length());
-				tsTx.u8Len = SPRINTF_u16Length();
-
-				// 送信
-				ToCoNet_bMacTxReq(&tsTx);
-
-				// LEDの制御
-				sAppData.u32LedCt = u32TickCount_ms;
-
-				// ＵＡＲＴに出力
-				vfPrintf(&sSerStream, LB "Fire PING Broadcast Message.");
 			}
 			break;
 
@@ -570,6 +715,50 @@ static void vHandleSerialInput(void)
 
 		vfPrintf(&sSerStream, LB);
 	    SERIAL_vFlush(sSerStream.u8Device);
+	}
+}
+
+int16 i16TransmitPingMessage(uint8 *pMsg) {
+	// transmit Ack back
+	tsTxDataApp tsTx;
+	memset(&tsTx, 0, sizeof(tsTxDataApp));
+	uint8 *q = tsTx.auData;
+
+	sAppData.u32Seq++;
+
+	tsTx.u32SrcAddr = ToCoNet_u32GetSerial(); // 自身のアドレス
+	tsTx.u32DstAddr = 0xFFFF; // ブロードキャスト
+
+	tsTx.bAckReq = FALSE;
+	tsTx.u8Retry = 0x82; // ブロードキャストで都合３回送る
+	tsTx.u8CbId = sAppData.u32Seq & 0xFF;
+	tsTx.u8Seq = sAppData.u32Seq & 0xFF;
+	tsTx.u8Cmd = TOCONET_PACKET_CMD_APP_DATA;
+
+	// SPRINTF でメッセージを作成
+	S_OCTET('P');
+	S_OCTET('I');
+	S_OCTET('N');
+	S_OCTET('G');
+	S_OCTET(':');
+	S_OCTET(' ');
+
+	uint8 u8len = strlen((const char *)pMsg);
+	memcpy(q, pMsg, u8len);
+	q += u8len;
+	tsTx.u8Len = q - tsTx.auData;
+
+	// 送信
+	if (ToCoNet_bMacTxReq(&tsTx)) {
+		// LEDの制御
+		sAppData.u32LedCt = u32TickCount_ms;
+
+		// ＵＡＲＴに出力
+		// vfPrintf(&sSerStream, LB "Fire PING Broadcast Message.");
+
+		return tsTx.u8CbId;
+	} else {
+		return -1;
 	}
 }
 
@@ -593,8 +782,18 @@ static void vProcessEvCore(tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 					bWakeupByButton ? "UART PORT" : "WAKE TIMER",
 					sAppData.u8SleepCt);
 	    } else {
-	    	vfPrintf(&sSerStream, "\r\n*** TWELITE NET PINGPONG SAMPLE %d.%02d-%d ***", VERSION_MAIN, VERSION_SUB, VERSION_VAR);
-	    	vfPrintf(&sSerStream, "\r\n*** %08x ***", ToCoNet_u32GetSerial());
+	    	// vfPrintf(&sSerStream, "\r\n*** TWELITE NET I2C SAMPLE %d.%02d-%d ***", VERSION_MAIN, VERSION_SUB, VERSION_VAR);
+	    	// vfPrintf(&sSerStream, "\r\n*** %08x ***", ToCoNet_u32GetSerial());
+			if (!u8KickedSensor) {
+				bool_t bres = bTMP1075startRead();
+				if (bres) {
+					vfPrintf(&sSerStream, "Start TMP1075 temperature sensing");
+					u8KickedSensor = KICKED_SENSOR_TMP1075;
+					u32KickedTimeStamp = u32TickCount_ms + 32;
+				} else {
+					vfPrintf(&sSerStream, LB "TMP1075 is not found.");
+				}
+			}
 	    }
 	}
 }

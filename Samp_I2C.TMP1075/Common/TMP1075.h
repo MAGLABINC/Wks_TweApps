@@ -2,57 +2,43 @@
  * Released under MW-SLA-*J,*E (MONO WIRELESS SOFTWARE LICENSE   *
  * AGREEMENT).                                                   */
 
-#ifndef  SLAVE_H_INCLUDED
-#define  SLAVE_H_INCLUDED
-
-#if defined __cplusplus
-extern "C" {
-#endif
+#ifndef  HUM_TMP1075_INCLUDED
+#define  HUM_TMP1075_INCLUDED
 
 /****************************************************************************/
 /***        Include Files                                                 ***/
 /****************************************************************************/
-#include "config.h"
+#include "sensor_driver.h"
 
 /****************************************************************************/
 /***        Macro Definitions                                             ***/
 /****************************************************************************/
-/** @ingroup SNSDRV
- * センサーの処理状態
- */
-typedef enum
-{
-	E_MODULE_MASTER = 0x00,     //!< Master基板（センサなし）
-	E_MODULE_SLAVE              //!< Slave基板（センサあり）
-} teModuleType;
+
+#define TMP1075_TRIG_TEMP   (0xf3)
+#define TMP1075_TRIG_HUMID  (0xf5)
 
 /****************************************************************************/
 /***        Type Definitions                                              ***/
 /****************************************************************************/
-//	受信したパケットから取得した基本的な情報
-typedef struct _tsRxPktInfo{
-	uint8	u8lqi_1st;		//	LQI
-	uint32	u32addr_1st;	//	アドレス
-	uint32	u32addr_rcvr;	//	受信機アドレス
-	uint8	u8id;			//	ID
-	uint16	u16fct;			//	FCT
-	uint8	u8pkt;			//	子機のセンサモード
-} tsRxPktInfo;
 
 /****************************************************************************/
-/***        Exported Functions                                            ***/
+/***        Exported Functions (state machine)                            ***/
 /****************************************************************************/
+
+/****************************************************************************/
+/***        Exported Functions (primitive funcs)                          ***/
+/****************************************************************************/
+PUBLIC bool_t bTMP1075reset();
+PUBLIC bool_t bTMP1075startRead();
+PUBLIC int16 i16TMP1075readResult();
 
 /****************************************************************************/
 /***        Exported Variables                                            ***/
 /****************************************************************************/
 
-#if defined __cplusplus
-}
-#endif
-
-#endif  /* SLAVE_H_INCLUDED */
+#endif  /* HUM_TMP1075_INCLUDED */
 
 /****************************************************************************/
 /***        END OF FILE                                                   ***/
 /****************************************************************************/
+

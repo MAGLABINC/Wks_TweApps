@@ -20,8 +20,6 @@
 #include "serial.h"
 #include "fprintf.h"
 
-#include "Interactive.h"
-
 // ToCoNet Header
 #include "ToCoNet.h"
 
@@ -33,11 +31,6 @@
 #endif
 
 #define CONTINUE() {u8StartAddr += 64; bOk = FALSE; memset(&sPALData, 0x00, sizeof(sPALData)); continue;}
-
-/**
- * Sleep の DIO wakeup 用
- */
-uint32 u32DioPortWakeUp = PORT_INPUT_MASK;
 
 /**
  * 暗号化カギ

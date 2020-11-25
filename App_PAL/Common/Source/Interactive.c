@@ -204,6 +204,7 @@ void Config_vUpdateScreen() {
  */
 void vHandleSerialInput() {
 	static uint32 u32last_tick;
+V_PRINTF(LB "vHandleSerialInput() in");
 
 	// カウンタ値のチェック
 	if (u32TickCount_ms - u32last_tick >= 16) {

@@ -13,6 +13,21 @@
 /****************************************************************************/
 /***        Macro Definitions                                             ***/
 /****************************************************************************/
+#define TMP1075_ADDRESS     (0x48)
+
+#define TMP1075_WRITE_REG   (0x01)
+#define TMP1075_READ_REG    (0x00)
+
+#define TMP1075_STARTUP_H	(0x80)
+#define TMP1075_STARTUP_L	(0xFF)
+
+#define TMP1075_START_H		(0x80)
+#define TMP1075_START_L		(0xFF)
+
+#define TMP1075_CONVTIME	(26) // 26ms
+
+#define TMP1075_DATA_NOTYET  (-32768)
+#define TMP1075_DATA_ERROR   (-32767)
 
 #define TMP1075_TRIG_TEMP   (0xf3)
 #define TMP1075_TRIG_HUMID  (0xf5)

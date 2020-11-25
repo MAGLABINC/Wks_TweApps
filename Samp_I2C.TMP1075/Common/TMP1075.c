@@ -13,18 +13,33 @@
 #include "TMP1075.h"
 #include "SMBus.h"
 
-// DEBUG options
+#include "ccitt8.h"
+
 #undef SERIAL_DEBUG
 #ifdef SERIAL_DEBUG
-#include "utils.h"
-#include "serial.h"
-#include "fprintf.h"
-#include "sprintf.h"
-PUBLIC tsFILE sSerStream;
+# include <serial.h>
+# include <fprintf.h>
+PUBLIC tsFILE sDebugStream;
 #endif
+
 /****************************************************************************/
 /***        Macro Definitions                                             ***/
 /****************************************************************************/
+#define TMP1075_ADDRESS     (0x48)
+
+#define TMP1075_WRITE_REG   (0x01)
+#define TMP1075_READ_REG    (0x00)
+
+#define TMP1075_STARTUP_H	(0x80)
+#define TMP1075_STARTUP_L	(0xFF)
+
+#define TMP1075_START_H		(0x80)
+#define TMP1075_START_L		(0xFF)
+
+#define TMP1075_CONVTIME	(26) // 26ms
+
+#define TMP1075_DATA_NOTYET  (-32768)
+#define TMP1075_DATA_ERROR   (-32767)
 
 /****************************************************************************/
 /***        Type Definitions                                              ***/
@@ -63,9 +78,6 @@ PUBLIC bool_t bTMP1075reset()
 	uint8 u8reg[2] = {TMP1075_STARTUP_H, TMP1075_STARTUP_L};
 
 	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_WRITE_REG, 2, u8reg);
-#ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 WRITE STARTUP bOk(%d)", bOk);
-#endif
 
 	return bOk;
 }
@@ -88,10 +100,10 @@ PUBLIC bool_t bTMP1075startRead()
 
 	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_WRITE_REG, 2, u8reg);
 #ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 WRITE START bOk(%d)", bOk);
+	vfPrintf(&sDebugStream, "\n\rTMP1075 WRITE START REG");
 #endif
 
-//	vWait(TMP1075_CONVTIME);
+	vWait(TMP1075_CONVTIME);
 
 	return bOk;
 }
@@ -125,15 +137,11 @@ PUBLIC int16 i16TMP1075readResult()
 	uint8 u8reg;
 
 	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_READ_REG, 0, &u8reg);
-#ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 WRITE READ REG bOk(%d)", bOk);
-#endif
     bOk &= bSMBusSequentialRead(TMP1075_ADDRESS, 2, au8data);
-#ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 READ TEMP DATA bOk(%d)", bOk);
-	vfPrintf(&sSerStream, LB"TMP1075 %x %x", au8data[0], au8data[1]);
-#endif
     if(!bOk) return TMP1075_DATA_NOTYET; // error
+#ifdef SERIAL_DEBUG
+	vfPrintf(&sDebugStream, "\n\rTMP1075 %x %x", au8data[0], au8data[1]);
+#endif
 
  	u16data = (au8data[0] << 8) | au8data[1];
 	if (u16data > 0x7fff) {
@@ -145,8 +153,8 @@ PUBLIC int16 i16TMP1075readResult()
 	au8data[1] = u16data & 0xff;
 	i16result = (int16)(((double)au8data[0] + (double)au8data[1] / 256.0) * sign);
 #ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 %x %x", au8data[0], au8data[1]);
-	vfPrintf(&sSerStream, LB"TMP1075 temp = %d", i16result);
+	vfPrintf(&sDebugStream, "au8data = %X, %X", au8data[0], au8data[1]);
+	vfPrintf(&sDebugStream, "i16result = %d(%f)", i16result, (double)i16result / 100.0);
 #endif
 
     return i16result;

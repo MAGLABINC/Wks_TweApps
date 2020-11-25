@@ -29,22 +29,6 @@
         "JENNIC_CHIP_FAMILY_JN516x",
         "JENNIC_STACK_MAC",
         "JENNIC_MAC_MAC",
-    ],
-    "files.associations": {
-        "functional": "cpp",
-        "limits": "cpp",
-        "compare": "cpp",
-        "cstddef": "cpp",
-        "fstream": "cpp",
-        "memory": "cpp",
-        "sstream": "cpp",
-        "system_error": "cpp",
-        "type_traits": "cpp",
-        "vector": "cpp",
-        "xhash": "cpp",
-        "xiosbase": "cpp",
-        "xlocale": "cpp",
-        "xutility": "cpp"
-    }
+    ]
 
 }

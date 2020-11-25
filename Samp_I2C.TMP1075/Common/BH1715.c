@@ -10,21 +10,31 @@
 #include "string.h"
 
 #include "sensor_driver.h"
-#include "TMP1075.h"
+#include "BH1715.h"
 #include "SMBus.h"
 
-// DEBUG options
+#include "ccitt8.h"
+
 #undef SERIAL_DEBUG
 #ifdef SERIAL_DEBUG
-#include "utils.h"
-#include "serial.h"
-#include "fprintf.h"
-#include "sprintf.h"
-PUBLIC tsFILE sSerStream;
+# include <serial.h>
+# include <fprintf.h>
+extern tsFILE sDebugStream;
 #endif
+
 /****************************************************************************/
 /***        Macro Definitions                                             ***/
 /****************************************************************************/
+#define BH1715_ADDRESS     (0x23)
+
+#define BH1715_TRIG        (0x23)
+
+#define BH1715_SOFT_RST    (0x07)
+
+#define BH1715_CONVTIME    (24+2) // 24ms MAX
+
+#define BH1715_DATA_NOTYET  (-32768)
+#define BH1715_DATA_ERROR   (-32767)
 
 /****************************************************************************/
 /***        Type Definitions                                              ***/
@@ -48,24 +58,21 @@ PUBLIC tsFILE sSerStream;
 
 /****************************************************************************
  *
- * NAME: vTMP1075reset
+ * NAME: bBH1715reset
  *
  * DESCRIPTION:
- *   to reset TMP1075 device
+ *   to reset BH1715 device
  *
  * RETURNS:
  * bool_t	fail or success
  *
  ****************************************************************************/
-PUBLIC bool_t bTMP1075reset()
+PUBLIC bool_t bBH1715reset()
 {
 	bool_t bOk = TRUE;
-	uint8 u8reg[2] = {TMP1075_STARTUP_H, TMP1075_STARTUP_L};
 
-	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_WRITE_REG, 2, u8reg);
-#ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 WRITE STARTUP bOk(%d)", bOk);
-#endif
+	bOk &= bSMBusWrite(BH1715_ADDRESS, BH1715_SOFT_RST, 0, NULL);
+	// then will need to wait at least 15ms
 
 	return bOk;
 }
@@ -81,77 +88,57 @@ PUBLIC bool_t bTMP1075reset()
  * void
  *
  ****************************************************************************/
-PUBLIC bool_t bTMP1075startRead()
+PUBLIC bool_t bBH1715startRead()
 {
 	bool_t bOk = TRUE;
-	uint8 u8reg[2] = {TMP1075_START_H, TMP1075_START_L};
 
-	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_WRITE_REG, 2, u8reg);
-#ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 WRITE START bOk(%d)", bOk);
-#endif
-
-//	vWait(TMP1075_CONVTIME);
+	// start conversion (will take some ms according to bits accuracy)
+	bOk &= bSMBusWrite(BH1715_ADDRESS, BH1715_TRIG, 0, NULL);
 
 	return bOk;
 }
 
 /****************************************************************************
  *
- * NAME: u16TMP1075readResult
+ * NAME: u16BH1715readResult
  *
  * DESCRIPTION:
  * Wrapper to read a measurement, followed by a conversion function to work
  * out the value in degrees Celcius.
  *
  * RETURNS:
- * int16: temperature in degrees Celcius x 100 (-4685 to 12886)
+ * int16: 0~10000 [1 := 5Lux], 100 means 500 Lux.
  *        0x8000, error
  *
  * NOTES:
  * the data conversion fomula is :
- *      TEMP:  -46.85+175.72*ReadValue/65536
- *
- *    where the 14bit ReadValue is scaled up to 16bit
+ *      ReadValue / 1.2 [LUX]
  *
  ****************************************************************************/
-PUBLIC int16 i16TMP1075readResult()
+PUBLIC int16 i16BH1715readResult()
 {
 	bool_t bOk = TRUE;
-    uint8 au8data[2];
-	uint16 u16data;
-	int16 i16result;
-	double sign = 100.0;
-	uint8 u8reg;
+    int32 i32result;
+    uint8 au8data[4];
 
-	bOk &= bSMBusWrite(TMP1075_ADDRESS, TMP1075_READ_REG, 0, &u8reg);
-#ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 WRITE READ REG bOk(%d)", bOk);
-#endif
-    bOk &= bSMBusSequentialRead(TMP1075_ADDRESS, 2, au8data);
-#ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 READ TEMP DATA bOk(%d)", bOk);
-	vfPrintf(&sSerStream, LB"TMP1075 %x %x", au8data[0], au8data[1]);
-#endif
-    if(!bOk) return TMP1075_DATA_NOTYET; // error
+    bOk &= bSMBusSequentialRead(BH1715_ADDRESS, 2, au8data);
+    if (bOk == FALSE) {
+    	i32result = SENSOR_TAG_DATA_ERROR;
+    }
 
- 	u16data = (au8data[0] << 8) | au8data[1];
-	if (u16data > 0x7fff) {
-		u16data ^= 0xffff;
-		u16data ++;
-		sign = -100.0;
-	}
-	au8data[0] = u16data >> 8;
-	au8data[1] = u16data & 0xff;
-	i16result = (int16)(((double)au8data[0] + (double)au8data[1] / 256.0) * sign);
+    i32result = ((au8data[0] << 8) | au8data[1]);
+    i32result = (i32result * 10 + 30) / 60; // i32result/1.2/5
+
 #ifdef SERIAL_DEBUG
-	vfPrintf(&sSerStream, LB"TMP1075 %x %x", au8data[0], au8data[1]);
-	vfPrintf(&sSerStream, LB"TMP1075 temp = %d", i16result);
+vfPrintf(&sDebugStream, "\n\rBH1715 DATA %x", *((uint16*)au8data) );
 #endif
 
-    return i16result;
+    return (int16)i32result;
 }
 
+/****************************************************************************/
+/***        Local Functions                                               ***/
+/****************************************************************************/
 
 /****************************************************************************/
 /***        END OF FILE                                                   ***/
