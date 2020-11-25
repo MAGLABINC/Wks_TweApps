@@ -194,13 +194,11 @@ PUBLIC bool_t bSHTC3wakeup(){
 void vProcessSnsObj_SHTC3(void *pvObj, teEvent eEvent) {
 	tsSnsObj *pSnsObj = (tsSnsObj *)pvObj;
 	tsObjData_SHTC3 *pObj = (tsObjData_SHTC3 *)pSnsObj->pvData;
-A_PRINTF(LB"!*** vProcessSnsObj_SHTC3 eEvent (%d) ***", eEvent);
 
 	// general process
 	switch (eEvent) {
 		case E_EVENT_TICK_TIMER:
 			if (pObj->u8TickCount < 100) {
-A_PRINTF(LB"!*** vProcessSnsObj_SHTC3 u8TickDelta (%d) ***", pSnsObj->u8TickDelta);
 				pObj->u8TickCount += pSnsObj->u8TickDelta;
 #ifdef SERIAL_DEBUG
 vfPrintf(&sDebugStream, "+");

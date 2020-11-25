@@ -8,6 +8,7 @@
 #include "jendefs.h"
 #include "AppHardwareApi.h"
 #include "string.h"
+#include "utils.h"
 
 #include "sensor_driver.h"
 #include "TMP1075.h"
