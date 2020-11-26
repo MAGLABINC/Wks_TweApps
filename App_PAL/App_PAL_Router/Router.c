@@ -277,13 +277,14 @@ PUBLIC void cbToCoNet_vRxEvent(tsRxDataApp *pRx) {
 			pRx->u8Seq, pRx->u8Lqi, pRx->u32Tick & 0xFFFF, pRx->bSecurePkt ? "Enc " : "");
 
 	for (i = 0; i < pRx->u8Len; i++) {
-		if (i < 32) {
-			A_PUTCHAR((pRx->auData[i] >= 0x20 && pRx->auData[i] <= 0x7f) ?
-							pRx->auData[i] : '.');
-		} else {
-			A_PRINTF( "..");
-			break;
-		}
+		// if (i < 32) {
+		// 	A_PUTCHAR((pRx->auData[i] >= 0x20 && pRx->auData[i] <= 0x7f) ?
+		// 					pRx->auData[i] : '.');
+		// } else {
+		// 	A_PRINTF( "..");
+		// 	break;
+		// }
+		A_PRINTF( "%02X ", pRx->auData[i]);
 	}
 	A_PRINTF( "\"]");
 

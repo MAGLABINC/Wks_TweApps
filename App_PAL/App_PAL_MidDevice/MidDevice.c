@@ -552,16 +552,16 @@ void vSerialInit(uint32 u32Baud, tsUartOpt *pUartOpt) {
  * 初期化メッセージ
  */
 void vSerInitMessage() {
-	A_PRINTF(LB LB"!INF MONO WIRELESS APP_PAL(EndDevice) V%d-%02d-%d", VERSION_MAIN, VERSION_SUB, VERSION_VAR);
-	A_FLUSH();
-	A_PRINTF(LB"!INF AID:%08x,SID:%08x,LID:%02d,PID:%02x",
-			sToCoNet_AppContext.u32AppId, ToCoNet_u32GetSerial(), sAppData.sFlash.sData.u8id, sPALData.u8PALModel);
-	A_FLUSH();
-	A_PRINTF(LB"!INF DIO --> %020b", sAppData.u32DIO_startup);
-	if (sAppData.bFlashLoaded == 0) {
-		A_PRINTF(LB"!INF Default config (no save info)...");
-	}
-	A_FLUSH();
+	// A_PRINTF(LB LB"!INF MONO WIRELESS APP_PAL(EndDevice) V%d-%02d-%d", VERSION_MAIN, VERSION_SUB, VERSION_VAR);
+	// A_FLUSH();
+	// A_PRINTF(LB"!INF AID:%08x,SID:%08x,LID:%02d,PID:%02x",
+	// 		sToCoNet_AppContext.u32AppId, ToCoNet_u32GetSerial(), sAppData.sFlash.sData.u8id, sPALData.u8PALModel);
+	// A_FLUSH();
+	// A_PRINTF(LB"!INF DIO --> %020b", sAppData.u32DIO_startup);
+	// if (sAppData.bFlashLoaded == 0) {
+	// 	A_PRINTF(LB"!INF Default config (no save info)...");
+	// }
+	// A_FLUSH();
 }
 
 /**

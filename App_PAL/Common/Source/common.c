@@ -249,11 +249,11 @@ bool_t bTransmitToParent(tsToCoNet_Nwk_Context *pNwk, uint8 *pu8Data, uint8 u8Le
 	sTx.u8Seq = sAppData.u16frame_count & 0xFF; // シーケンス番号(送信先に通知される)
 	sTx.u8Retry = sAppData.u8Retry;
 
-// #ifdef MIDDEVICE
-// 	return ToCoNet_bMacTxReq(&sTx);
-// #else
+#ifdef MIDDEVICE
+	return ToCoNet_bMacTxReq(&sTx);
+#else
 	return ToCoNet_Nwk_bTx(pNwk, &sTx);
-// #endif
+#endif
 }
 #endif
 
