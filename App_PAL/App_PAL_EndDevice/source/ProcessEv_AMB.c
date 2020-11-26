@@ -72,12 +72,10 @@ PRSEV_HANDLER_DEF(E_STATE_IDLE, tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 		// センサーがらみの変数の初期化
 		u8sns_cmplt = 0;
 
-A_PRINTF(LB"!*** vLTR308ALS_Init ***");
 		vLTR308ALS_Init(&sObjLTR308ALS, &sSnsObj[1]);
 		vSnsObj_Process(&sSnsObj[1], E_ORDER_KICK);
 		if (bSnsObj_isComplete(&sSnsObj[1])) {
 			// 即座に完了した時はセンサーが接続されていない、通信エラー等
-A_PRINTF(LB"!*** vLTR308ALS_Init -> Error ***");
 			u8sns_cmplt |= E_SNS_LTR308ALS_CMP;
 			V_PRINTF(LB "*** LTR308ALS comm err?");
 			V_FLUSH();
@@ -89,12 +87,10 @@ A_PRINTF(LB"!*** vLTR308ALS_Init -> Error ***");
 		}
 
 		// SHTC3
-A_PRINTF(LB"!*** vSHTC3_Init ***");
 		vSHTC3_Init(&sObjSHTC3, &sSnsObj[0]);
 		vSnsObj_Process(&sSnsObj[0], E_ORDER_KICK);
 		if (bSnsObj_isComplete(&sSnsObj[0])) {
 			// 即座に完了した時はセンサーが接続されていない、通信エラー等
-A_PRINTF(LB"!*** vSHTC3_Init -> Error ***");
 			u8sns_cmplt |= E_SNS_SHTC3_CMP;
 			V_PRINTF(LB "*** SHTC3 comm err?");
 			abErr[0] = TRUE;
@@ -441,24 +437,18 @@ static tsCbHandler sCbHandler = {
  * アプリケーション初期化
  */
 void vInitAppENV() {
-A_PRINTF(LB"!*** vInitAppENV ***");
 	psCbHandler = &sCbHandler;
 	pvProcessEv = vProcessEvCore;
 }
 
 static void vProcessENV(teEvent eEvent) {
-A_PRINTF(LB"!*** vProcessENV eEvent(%d) ***", eEvent);
-A_PRINTF(LB"!*** sSnsObj 0(%d) 1(%d) ***", sSnsObj[0].u8State, sSnsObj[1].u8State);
 	if (!bSnsObj_isComplete(&sSnsObj[0])) {
 		// イベントの処理
-A_PRINTF(LB"!before vSnsObj_Process");
 		vSnsObj_Process(&sSnsObj[0], eEvent); // ポーリングの時間待ち
-A_PRINTF(LB"!after vSnsObj_Process");
 		if (bSnsObj_isComplete(&sSnsObj[0]) && !(u8sns_cmplt&E_SNS_SHTC3_CMP) ){
 			u8sns_cmplt |= E_SNS_SHTC3_CMP;
 
-//			V_PRINTF(LB"!SHTC3: %d.%02dC %d.%02d%%",
-A_PRINTF(LB"!SHTC3: %d.%02dC %d.%02d%%",
+			V_PRINTF(LB"!SHTC3: %d.%02dC %d.%02d%%",
 				sObjSHTC3.ai16Result[SHTC3_IDX_TEMP] / 100, sObjSHTC3.ai16Result[SHTC3_IDX_TEMP] % 100,
 				sObjSHTC3.ai16Result[SHTC3_IDX_HUMID] / 100, sObjSHTC3.ai16Result[SHTC3_IDX_HUMID] % 100
 			);

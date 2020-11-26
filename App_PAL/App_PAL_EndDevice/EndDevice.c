@@ -179,7 +179,6 @@ void cbAppColdStart(bool_t bAfterAhiInit) {
 
 			// ADC の初期化
 			vInitADC();
-A_PRINTF(LB"!*** AMB Init ***");
 			vInitAppENV();
 		} else
 		// PAL MOT
@@ -502,7 +501,6 @@ static void vInitHardware(int f_warm_start)
 				u32DioPortWakeUp |= ( 1UL<<SNS_EN | 1UL<<SNS_INT );
 				break;
 			case PKT_ID_AMB:
-A_PRINTF(LB"!*** Hardware init ***");
 				vPortSetLo( EH_BOOT );
 				vPortDisablePullup( EH_BOOT );
 				vPortAsOutput( EH_BOOT );

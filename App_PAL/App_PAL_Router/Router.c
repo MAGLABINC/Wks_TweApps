@@ -277,6 +277,7 @@ PUBLIC void cbToCoNet_vRxEvent(tsRxDataApp *pRx) {
 			pRx->u8Seq, pRx->u8Lqi, pRx->u32Tick & 0xFFFF, pRx->bSecurePkt ? "Enc " : "");
 
 	for (i = 0; i < pRx->u8Len; i++) {
+		A_PRINTF( "%02X", pRx->auData[i]);
 		// if (i < 32) {
 		// 	A_PUTCHAR((pRx->auData[i] >= 0x20 && pRx->auData[i] <= 0x7f) ?
 		// 					pRx->auData[i] : '.');
@@ -284,7 +285,6 @@ PUBLIC void cbToCoNet_vRxEvent(tsRxDataApp *pRx) {
 		// 	A_PRINTF( "..");
 		// 	break;
 		// }
-		A_PRINTF( "%02X ", pRx->auData[i]);
 	}
 	A_PRINTF( "\"]");
 
@@ -382,6 +382,7 @@ void cbToCoNet_vNwkEvent(teEvent eEvent, uint32 u32arg) {
 		break;
 
 	case E_EVENT_TOCONET_NWK_ROUTE_PKT:
+		A_PRINTF( LB"[E_EVENT_TOCONET_NWK_ROUTE_PKT]");
 		if (u32arg) {
 			tsRoutePktInfo *pInfo = (void*)u32arg;
 
@@ -392,10 +393,12 @@ void cbToCoNet_vNwkEvent(teEvent eEvent, uint32 u32arg) {
 		break;
 
 	case E_EVENT_TOCONET_NWK_MESSAGE_POOL_REQUEST:
+		A_PRINTF( LB"[E_EVENT_TOCONET_NWK_MESSAGE_POOL_REQUEST]");
 		sAppData.u32LedCt = 25;
 		break;
 
 	case E_EVENT_TOCONET_NWK_MESSAGE_POOL:
+		A_PRINTF( LB"[E_EVENT_TOCONET_NWK_MESSAGE_POOL]");
 		if (u32arg) {
 			tsToCoNet_MsgPl_Entity *pInfo = (void*)u32arg;
 			int i;
@@ -418,6 +421,7 @@ void cbToCoNet_vNwkEvent(teEvent eEvent, uint32 u32arg) {
 		break;
 
 	case E_EVENT_TOCONET_PANIC:
+		A_PRINTF( LB"[E_EVENT_TOCONET_PANIC]");
 		if (u32arg) {
 			tsPanicEventInfo *pInfo = (void*)u32arg;
 			V_PRINTF( "PANIC DETECTED!");
@@ -634,6 +638,7 @@ void vSerNwkInfoV() {
 		pc->u32AddrHigherLayer
 	);
 }
+
 /****************************************************************************/
 /***        END OF FILE                                                   ***/
 /****************************************************************************/

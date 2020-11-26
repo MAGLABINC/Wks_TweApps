@@ -23,7 +23,7 @@ extern "C" {
 
 /* Serial Configuration */
 #define UART_BAUD   		115200
-#define UART_BAUD_SAFE		115200
+#define UART_BAUD_SAFE		38400
 #define UART_PARITY_ENABLE	E_AHI_UART_PARITY_DISABLE
 #define UART_PARITY_TYPE 	E_AHI_UART_ODD_PARITY // if enabled
 #define UART_BITLEN			E_AHI_UART_WORD_LEN_8

@@ -204,7 +204,6 @@ void Config_vUpdateScreen() {
  */
 void vHandleSerialInput() {
 	static uint32 u32last_tick;
-V_PRINTF(LB "vHandleSerialInput() in");
 
 	// カウンタ値のチェック
 	if (u32TickCount_ms - u32last_tick >= 16) {
@@ -221,14 +220,6 @@ V_PRINTF(LB "vHandleSerialInput() in");
 		// UART バッファからのバイトの取り出し
 		int16 i16Char = SERIAL_i16RxChar(sSerPort.u8SerialPort);
 
-		if (i16Char == ':') {
-			A_PRINTF(LB ":");
-			while (!SERIAL_bRxQueueEmpty(sSerPort.u8SerialPort)) {
-				i16Char = SERIAL_i16RxChar(sSerPort.u8SerialPort);
-				A_PRINTF("%02X", i16Char);
-			}
-			return;
-		}
 
 		// process
 		if (i16Char >=0 && i16Char <= 0xFF) {

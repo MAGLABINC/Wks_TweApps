@@ -269,7 +269,7 @@ void cbToCoNet_vMain(void) {
  * 受信処理
  */
 void cbToCoNet_vRxEvent(tsRxDataApp *pRx) {
-A_PRINTF(LB"!*** cbToCoNet_vRxEvent ***");
+A_PRINTF(LB"!***  cbAppToCoNet_vRxEvent(tsRxDataApp *pRx) ***");
 	if (psCbHandler && psCbHandler->pf_cbToCoNet_vRxEvent) {
 		(*psCbHandler->pf_cbToCoNet_vRxEvent)(pRx);
 	}

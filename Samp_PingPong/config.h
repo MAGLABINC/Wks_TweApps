@@ -31,7 +31,7 @@ extern "C" {
 
 /* Specify the PAN ID and CHANNEL to be used by tags, readers and gateway */
 #define APP_ID              0x67726303
-#define CHANNEL             18
+#define CHANNEL             15
 
 // 666kbps mode to save transmit energy
 #define HIGH_DATARATE 0 // undef:250kbps, 1:500kbps, 2:667kbps

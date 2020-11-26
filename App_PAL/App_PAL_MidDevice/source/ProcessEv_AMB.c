@@ -5,8 +5,9 @@
 #include <jendefs.h>
 
 #include "utils.h"
-
+#include "ToCoNet.h"
 #include "Interactive.h"
+
 #include "MidDevice.h"
 
 #include "sensor_driver.h"
@@ -228,10 +229,13 @@ PRSEV_HANDLER_DEF(E_STATE_APP_WAIT_TX, tsEvent *pEv, teEvent eEvent, uint32 u32e
 			V_PRINTF(LB"TxFl");
 			ToCoNet_Event_SetState(pEv, E_STATE_APP_SLEEP); // 送信失敗
 		}
+
+#ifdef MIDDEVICE
 		A_PRINTF(LB ":");
 		int dc;
 		for (dc=0; dc<q-au8Data; dc++)
 			A_PRINTF("%02X", au8Data[dc]);
+#endif
 
 		V_PRINTF(" FR=%04X", sAppData.u16frame_count);
 	}
@@ -409,8 +413,69 @@ static void cbAppToCoNet_vNwkEvent(teEvent eEvent, uint32 u32arg) {
  * @param pRx
  */
 static void cbAppToCoNet_vRxEvent(tsRxDataApp *pRx) {
-A_PRINTF(LB"!*** cbAppToCoNet_vRxEvent ***");
+	int i;
 
+	// print coming payload
+	A_PRINTF(
+			LB "[PKT Ad:%04x,Ln:%03d,Seq:%03d,Lq:%03d,Tms:%05d %s\"",
+			pRx->u32SrcAddr, pRx->u8Len, // Actual payload byte: the network layer uses additional 4 bytes.
+			pRx->u8Seq, pRx->u8Lqi, pRx->u32Tick & 0xFFFF, pRx->bSecurePkt ? "Enc " : "");
+
+	for (i = 0; i < pRx->u8Len; i++) {
+		if (i < 32) {
+			A_PUTCHAR((pRx->auData[i] >= 0x20 && pRx->auData[i] <= 0x7f) ?
+							pRx->auData[i] : '.');
+		} else {
+			A_PRINTF( "..");
+			break;
+		}
+	}
+	A_PRINTF( "\"]");
+
+	// 暗号化対応時に平文パケットは受信しない
+	if (IS_APPCONF_OPT_SECURE()) {
+		if (!pRx->bSecurePkt) {
+			A_PRINTF( ".. skipped plain packet.");
+			return;
+		}
+	}
+
+	// 直接受信したパケットを上位へ転送する
+	//
+	// 直接親機宛(TOCONET_NWK_ADDR_PARENT指定で送信)に向けたパケットはここでは処理されない。
+	// 本処理はアドレス指定がTOCONET_NWK_ADDR_NEIGHBOUR_ABOVEの場合で、一端中継機が受け取り
+	// その中継機のアドレス、受信時のLQIを含めて親機に伝達する方式である。
+	if ((pRx->auData[0]&0x7F) == 'T') {
+		tsTxDataApp sTx;
+		memset(&sTx, 0, sizeof(sTx));
+		uint8 *q = sTx.auData;
+
+		uint8 u8Headder = 'R';
+		u8Headder |= pRx->auData[0]&0x80;
+		S_OCTET(u8Headder); // 1バイト目に中継機フラグを立てる
+		S_BE_DWORD(pRx->u32SrcAddr); // 子機のアドレスを
+		S_OCTET(pRx->u8Lqi); // 受信したLQI を保存する
+
+		memcpy(sTx.auData + 6, pRx->auData + 1, pRx->u8Len - 1); // 先頭の１バイトを除いて５バイト先にコピーする
+		q += pRx->u8Len - 1;
+
+		sTx.u8Len = q - sTx.auData;
+
+		sTx.u32DstAddr = TOCONET_NWK_ADDR_PARENT;
+		sTx.u32SrcAddr = ToCoNet_u32GetSerial(); // Transmit using Long address
+		sTx.u8Cmd = 0; // data packet.
+
+		sTx.u8Seq = pRx->u8Seq;
+		sTx.u8CbId = pRx->u8Seq;
+
+		sTx.u16DelayMax = 300; // 送信開始の遅延を大きめに設定する
+
+		if (IS_APPCONF_OPT_SECURE()) {
+			sTx.bSecurePacket = TRUE;
+		}
+
+		ToCoNet_bMacTxReq(&sTx);
+	}
 }
 #endif
 
@@ -436,10 +501,13 @@ static tsCbHandler sCbHandler = {
 	cbAppToCoNet_vHwEvent,
 	NULL, // cbAppToCoNet_vMain,
 	NULL, // cbAppToCoNet_vNwkEvent,
-	// NULL, // cbAppToCoNet_vRxEvent,
+#ifdef MIDDEVICE
 	cbAppToCoNet_vRxEvent,
-	// cbAppToCoNet_vTxEvent
 	NULL, // cbAppToCoNet_vTxEvent
+#else
+	NULL, // cbAppToCoNet_vRxEvent,
+	cbAppToCoNet_vTxEvent
+#endif
 };
 
 /**
