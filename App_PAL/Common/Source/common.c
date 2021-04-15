@@ -266,6 +266,7 @@ bool_t bTransmitToParent(tsToCoNet_Nwk_Context *pNwk, uint8 *pu8Data, uint8 u8Le
  */
 void vSleep(uint32 u32SleepDur_ms, bool_t bPeriodic, bool_t bDeep) {
 	vPortSetLo(WDT_OUT);
+A_PRINTF(LB"!*** Sleep : WDT <- 'Lo'");
 #ifdef ENDDEVICE
 	if(!IS_APPCONF_OPT_WAKE_RANDOM() && u32SleepDur_ms != 0){		//	起床ランダムのオプションが立っていた時
 		uint32 u32max = u32SleepDur_ms>>3;		//	だいたい±10%
