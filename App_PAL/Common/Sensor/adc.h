@@ -65,10 +65,6 @@ extern "C" {
 #define TEH_ADC_IDX_BEGIN    0 //!< ai16Result[] の先頭インデックス @ingroup ADC
 #define TEH_ADC_IDX_END      6 //!< ai16Result[] の末尾＋１インデックス @ingroup ADC
 
-#define	MCP3221A5T			(0x4D)
-#define MCP3221_WRITE_REG   (0x01)
-#define MCP3221_READ_REG    (0x00)
-
 /****************************************************************************/
 /***        Type Definitions                                              ***/
 /****************************************************************************/

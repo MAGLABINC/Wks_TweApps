@@ -344,8 +344,7 @@ static void vInitADC() {
 	vADC_WaitInit();
 
 	sAppData.u8AdcState = 0xFF; // 初期化中
-//	sAppData.sObjADC.u8SourceMask = TEH_ADC_SRC_VOLT | TEH_ADC_SRC_ADC_1;
-	sAppData.sObjADC.u8SourceMask = TEH_ADC_SRC_ADC_1;
+	sAppData.sObjADC.u8SourceMask = TEH_ADC_SRC_VOLT | TEH_ADC_SRC_ADC_1;
 }
 
 /**
@@ -441,7 +440,6 @@ static void vInitHardware(int f_warm_start)
 
 	// WDTのための出力変化
 	vPortSetHi(WDT_OUT);
-//A_PRINTF(LB"!*** EndDevice : WDT <- 'Hi'");
 	if(!f_warm_start){
 		// WDTを制御するポートの初期化
 		vPortDisablePullup(WDT_OUT);

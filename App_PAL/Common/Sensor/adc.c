@@ -15,7 +15,6 @@
 #include "adc.h"
 
 #undef SERIAL_DEBUG
-//#define SERIAL_DEBUG
 #ifdef SERIAL_DEBUG
 #include <serial.h>
 #include <fprintf.h>
@@ -93,17 +92,9 @@ void vADC_Init(tsObjData_ADC *pData, tsSnsObj *pSnsObj, bool_t bInitAPR) {
 							 E_AHI_AP_SAMPLE_2,
 							 E_AHI_AP_CLOCKDIV_500KHZ,
 							 E_AHI_AP_INTREF);
+
 		}
 	}
-
-	// Read ADC(MCP3221A5T-E/OT)
-	bool_t bOk = TRUE;
-	uint8 u8reg;
-	bOk &= bSMBusWrite(MCP3221A5T, MCP3221_WRITE_REG, 0, &u8reg);
-#ifdef SERIAL_DEBUG
-vfPrintf(&sSerStream, "\n\r!DEBUG TMP1075 Start result = %s", bOk == TRUE ? "OK" : "NG");
-vfPrintf(&sSerStream, "\n\r!DEBUG TMP1075 Start");
-#endif
 }
 
 /** @ingroup ADC
@@ -159,9 +150,6 @@ static void vProcessSnsObj_ADC(void *pvObj, teEvent eEvent) {
 	switch(pSnsObj->u8State)
 	{
 	case E_SNSOBJ_STATE_INACTIVE:
-#ifdef SERIAL_DEBUG
-vfPrintf(&sSerStream, "\n\r!DEBUG pSnsObj->u8State == E_SNSOBJ_STATE_INACTIVE");
-#endif
 		break;
 
 	case E_SNSOBJ_STATE_IDLE:
@@ -222,20 +210,6 @@ vfPrintf(&sSerStream, "\n\rE_ADC STARTED %x", au8AdcSrcTable[pObj->u8IdxMeasurui
 			vfPrintf(&sSerStream, "\n\rADC COMPLETE: SRC(%d)->%d", pObj->u8IdxMeasuruing, pObj->ai16Result[pObj->u8IdxMeasuruing]);
 #endif
 
-			// Read ADC(MCP3221A5T-E/OT)
-			bool_t bOk = TRUE;
-			uint8 au8data[2];
-			uint16 data;
-			uint16 volt;
-			bOk &= bSMBusSequentialRead(MCP3221A5T, 2, au8data);
-			data = (uint16)(((au8data[0] & 0x0F) << 8) + au8data[1]);
-			volt = (uint16)(3300.0 / 4095.0 * (double)data);
-			pObj->ai16Result[TEH_ADC_IDX_VOLT] = (int32)(volt);
-#ifdef SERIAL_DEBUG
-vfPrintf(&sSerStream, "\n\r!DEBUG TMP1075 Read data result = %s", bOk == TRUE ? "OK" : "NG");
-vfPrintf(&sSerStream, "\n\r!DEBUG TMP1075 Read data = %d(%04X:%02X,%02X)", volt, data, au8data[0], au8data[1]);
-#endif
-#if 0
 			// 電源電圧の変換  (ADCVAL -> mV)
 			// 基本的に 2~3.6V を ADC のフルスケールとして測定できるような分圧回路が半導体内部に構成される。
 			// つまりADC値が0なら 2000mV, 4095 なら 3600mV となる。
@@ -247,7 +221,6 @@ vfPrintf(&sSerStream, "\n\r!DEBUG TMP1075 Read data = %d(%04X:%02X,%02X)", volt,
 				// を行います。
 				pObj->ai16Result[TEH_ADC_IDX_VOLT] = ((int32)(i16AdcVal) * 3705) >> 10;
 			} else
-#endif
 			// 内蔵温度センサーの変換 (ADCVAL -> 100x degC 23.55℃なら 2355 に変換する)
 			if (   pObj->u8IdxMeasuruing == TEH_ADC_IDX_TEMP && !IS_SENSOR_TAG_DATA_ERR(pObj->ai16Result[TEH_ADC_IDX_TEMP])) {
 #ifndef USE_TEMP_RAW // USE_TEMP_RAW が定義された場合は、そのままの AD 値を採用

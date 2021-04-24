@@ -182,8 +182,6 @@ PRSEV_HANDLER_DEF(E_STATE_APP_WAIT_TX, tsEvent *pEv, teEvent eEvent, uint32 u32e
 			S_OCTET(5);		// データ数
 		}
 
-		vStoreSensorValue();			// センサー値を格納する
-
 		S_OCTET(0x30);					// 電圧
 		S_OCTET(0x01);					// 電源電圧
 		S_OCTET(sAppData.u8Batt);
@@ -267,6 +265,7 @@ PRSEV_HANDLER_DEF(E_STATE_APP_SLEEP, tsEvent *pEv, teEvent eEvent, uint32 u32eva
 	if (eEvent == E_EVENT_NEW_STATE) {
 		// Sleep は必ず E_EVENT_NEW_STATE 内など１回のみ呼び出される場所で呼び出す。
 		V_PRINTF(LB"! Sleeping...");
+		V_FLUSH();
 
 		pEv->bKeepStateOnSetAll = FALSE; // スリープ復帰の状態を維持
 
@@ -282,11 +281,8 @@ PRSEV_HANDLER_DEF(E_STATE_APP_SLEEP, tsEvent *pEv, teEvent eEvent, uint32 u32eva
 		vAHI_DioWakeEdge( 0, u32DioPortWakeUp ); // 割り込みエッジ（立下りに設定）
 
 		// 周期スリープに入る
-		vSleep( 10000, sAppData.u16frame_count == 1 ? FALSE : TRUE, FALSE);
+		vSleep( 60000, sAppData.u16frame_count == 1 ? FALSE : TRUE, FALSE);
 	}
-else
-A_PRINTF(LB"!*** not Sleep");
-V_FLUSH();
 }
 
 /**
@@ -488,5 +484,5 @@ static void vProcessENV(teEvent eEvent) {
 static void vStoreSensorValue() {
 	// センサー値の保管
 	sAppData.u16Adc[0] = sAppData.sObjADC.ai16Result[TEH_ADC_IDX_ADC_1];
-	sAppData.u8Batt = sAppData.sObjADC.ai16Result[TEH_ADC_IDX_VOLT];
+	sAppData.u8Batt = ENCODE_VOLT(sAppData.sObjADC.ai16Result[TEH_ADC_IDX_VOLT]);
 }
