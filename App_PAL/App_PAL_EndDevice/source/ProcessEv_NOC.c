@@ -89,6 +89,7 @@ PRSEV_HANDLER_DEF(E_STATE_IDLE, tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 		}
 
 		// TMP1075
+		DEV_POWER_EN();		// センサー電源 ON
 		u8sns_cmplt = 0;	// センサーがらみの変数の初期化
 		vTMP1075_Init(&sObjTMP1075, &sSnsObj[0]);
 		vSnsObj_Process(&sSnsObj[0], E_ORDER_KICK);
@@ -239,6 +240,7 @@ PRSEV_HANDLER_DEF(E_STATE_APP_SLEEP, tsEvent *pEv, teEvent eEvent, uint32 u32eva
 
 		// 周期スリープに入る
 		vSleep( u32Sleep, sAppData.u16frame_count == 1 ? FALSE : TRUE, FALSE);
+		DEV_POWER_DI();		// センサー電源 OFF
 	}
 }
 

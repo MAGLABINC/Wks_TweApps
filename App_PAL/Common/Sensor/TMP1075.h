@@ -33,6 +33,9 @@ void vTMP1075_Final(tsObjData_TMP1075 *pData, tsSnsObj *pSnsObj);
 #define TMP1075_DATA_NOTYET	(-32768)
 #define TMP1075_DATA_ERROR	(-32767)
 
+#define DEV_POWER_EN() vPortSetHi(DEVPWR_EN)
+#define DEV_POWER_DI() vPortSetLo(DEVPWR_EN)
+
 /****************************************************************************/
 /***        Exported Functions (primitive funcs)                          ***/
 /****************************************************************************/

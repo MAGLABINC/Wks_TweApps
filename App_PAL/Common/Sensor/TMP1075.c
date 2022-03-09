@@ -6,6 +6,7 @@
 #include "string.h"
 
 #include "sensor_driver.h"
+#include "common.h"
 #include "TMP1075.h"
 #include "SMBus.h"
 
@@ -246,6 +247,7 @@ vfPrintf(&sDebugStream, "\n\rTMP1075 WAKEUP");
 		if (pObj->u8TickCount > pObj->u8TickWait) {
 			int16 i16ret;
 			i16ret = i16TMP1075readResult( &(pObj->ai16Result) );
+			DEV_POWER_DI();		// センサー電源 OFF
 
 			if (i16ret == SENSOR_TAG_DATA_ERROR) {
 				vSnsObj_NewState(pSnsObj, E_SNSOBJ_STATE_COMPLETE); // error

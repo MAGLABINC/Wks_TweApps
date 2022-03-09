@@ -25,7 +25,7 @@ extern const uint8 au8EncKey[];
 extern uint32 u32DioPortWakeUp;
 
 /*
- * パケット識別子
+ * パケ�?ト識別�?
  */
 #define PKT_ID_NOCONNECT 0x00
 #define PKT_ID_MAG 0x01
@@ -36,11 +36,11 @@ extern uint32 u32DioPortWakeUp;
 #define PKT_ID_IRC 0x06
 
 /*
- * 標準ポート定義 (TWELITE PAL)
+ * 標準�?��?�ト定義 (TWELITE PAL)
  */
 #ifdef OTA
 #warning "IO CONF IS FOR OTA!"
-#define PORT_OUT1 16 // DIO16/18 をスワップ
+#define PORT_OUT1 16 // DIO16/18 をスワ�?�?
 #define PORT_OUT2 19
 #define PORT_OUT3 4
 #define PORT_OUT4 9
@@ -48,7 +48,7 @@ extern uint32 u32DioPortWakeUp;
 #define PORT_INPUT1 12
 #define PORT_INPUT2 13
 #define PORT_INPUT3 11
-#define PORT_INPUT4 18 // DIO16/18 をスワッ
+#define PORT_INPUT4 18 // DIO16/18 をスワ�?
 #endif
 // 子機用配置
 //#warning "IO CONF IS FOR ENDDEVICE"
@@ -76,5 +76,7 @@ extern uint32 u32DioPortWakeUp;
 
 #define SNS_EN 16
 #define SNS_INT 17
+
+#define DEVPWR_EN 18
 
 #endif /* COMMON_H_ */
