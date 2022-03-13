@@ -25,7 +25,7 @@ else
   else
     VERSION_MAIN = 22
     VERSION_SUB  = 3
-    VERSION_VAR  = 9
+    VERSION_VAR  = 13
 
     # 21.9.10 温度センサ読込みディレーを追加
     # 21.9.10 温度センサスリープ制御見直し

@@ -607,6 +607,11 @@ static void vInitHardware(int f_warm_start)
 		vPortDisablePullup(OUTPUT_LED);
 		vPortAsOutput(OUTPUT_LED);
 
+		// センサ電源の初期化(OFF)
+		vPortSetLo(DEVPWR_EN);
+		vPortDisablePullup(DEVPWR_EN);
+		vPortAsOutput(DEVPWR_EN);
+
 		vPortAsInput(INPUT_SWSET);
 #ifdef USE_CUE
 		if( bPortRead(INPUT_SWSET) || (u8PowerUp == 0x00 && !IS_APPCONF_OPT_DISABLE_OTA()) ){
